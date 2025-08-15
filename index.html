@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chain Reaction</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Custom Navbar -->
+    <div class="titlebar" id="titlebar">
+        <div class="titlebar-drag-region">
+            <div class="window-title">
+                <span class="app-icon">⚛️</span>
+                <span>Chain Reaction</span>
+            </div>
+        </div>
+        <div class="window-controls">
+            <button class="window-control" id="minimize-btn" title="Minimize">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <rect x="0" y="5" width="12" height="2" fill="currentColor"/>
+                </svg>
+            </button>
+            <button class="window-control" id="maximize-btn" title="Maximize">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <rect x="0" y="0" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+            <button class="window-control close" id="close-btn" title="Close">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="game-section">
+            <h1 class="game-title">
+                <span class="gradient-text">Chain Reaction</span>
+            </h1>
+            <p class="game-subtitle">Strategic chain reaction game</p>
+            
+            <div class="game-card">
+                <div id="game-wrapper">
+                    <canvas id="chain-canvas" width="720" height="480"></canvas>
+                </div>
+                <p class="game-hint">Click the red <strong>3</strong> cell to distribute to its four neighbors. Minimal demo only.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
