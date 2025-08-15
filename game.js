@@ -94,7 +94,10 @@
             cell.count = 1;
             cell.color = color;
         } else {
-            if (!sourceIsExplosion && cell.color !== color) {
+            if (sourceIsExplosion) {
+                // Explosion converts ownership
+                cell.color = color;
+            } else if (cell.color !== color) {
                 // Ignore adding to opponent cell from click (simple rule for demo)
                 return;
             }
