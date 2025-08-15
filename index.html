@@ -43,10 +43,21 @@
             <p class="game-subtitle">Strategic chain reaction game</p>
             
             <div class="game-card">
+                <div class="game-controls">
+                    <label for="player-color">Team Color:</label>
+                    <select id="player-color">
+                        <option value="red" selected>Red</option>
+                        <option value="yellow">Yellow</option>
+                        <option value="green">Green</option>
+                        <option value="blue">Blue</option>
+                        <option value="pink">Pink</option>
+                        <option value="cyan">Cyan</option>
+                    </select>
+                </div>
                 <div id="game-wrapper">
                     <canvas id="chain-canvas" width="720" height="480"></canvas>
                 </div>
-                <p class="game-hint">Click the red <strong>3</strong> cell to distribute to its four neighbors. Minimal demo only.</p>
+                <p class="game-hint">Click empty cells to add atoms. Click <strong>3</strong> atoms to trigger chain reaction.</p>
             </div>
         </div>
     </div>

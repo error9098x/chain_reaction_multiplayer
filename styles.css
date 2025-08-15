@@ -176,6 +176,42 @@ body {
     margin-top: 0.8rem;
 }
 
+.game-controls {
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.game-controls label {
+    color: white;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.game-controls select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    color: white;
+    font-size: 0.9rem;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+}
+
+.game-controls select:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+
+.game-controls select option {
+    background: #2a2a2a;
+    color: white;
+}
+
 
 
 /* Responsive Design */
