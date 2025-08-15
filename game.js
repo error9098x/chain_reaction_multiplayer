@@ -10,7 +10,6 @@
     const COLS = 10;
     const ROWS = 8;
     const cellPadding = 2;
-    const gridBg = 'rgba(64,64,64,0.2)';
     const textColor = '#ffffff';
     
     // Color palette
@@ -24,6 +23,16 @@
     };
     
     let currentColor = 'red';
+    
+    // Dynamic grid background based on current color
+    function getGridBg() {
+        const color = colors[currentColor];
+        // Convert hex to rgba with low opacity
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, 0.1)`;
+    }
 
     // Internal pixel size (fixed logical space)
     const logicalWidth = 720;
@@ -118,8 +127,8 @@
                 const x = c * cellWidth;
                 const y = r * cellHeight;
 
-                // Background cell
-                ctx.fillStyle = gridBg;
+                // Background cell with dynamic color
+                ctx.fillStyle = getGridBg();
                 ctx.fillRect(x + cellPadding, y + cellPadding, cellWidth - 2 * cellPadding, cellHeight - 2 * cellPadding);
 
                 const cell = grid[r][c];
@@ -138,6 +147,11 @@
                         jitterY = Math.cos(animationFrame / 6 + (r * 5 + c * 3)) * 1.8;
                     }
 
+                    // Set up glow effect
+                    ctx.shadowColor = colors[cell.color];
+                    ctx.shadowBlur = 15;
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
                     ctx.fillStyle = colors[cell.color];
 
                     const drawAtom = (ax, ay) => {
@@ -158,6 +172,9 @@
                         drawAtom(cx + spacing + jitterX, cy - spacing * 0.6 + jitterY);
                         drawAtom(cx + jitterX, cy + spacing * 0.8 + jitterY);
                     }
+                    
+                    // Reset shadow for other drawing operations
+                    ctx.shadowBlur = 0;
                 }
             }
         }
@@ -169,10 +186,19 @@
             const x = p.sx + (p.ex - p.sx) * t;
             const y = p.sy + (p.ey - p.sy) * t;
 
+            // Add glow to projectiles too
+            ctx.shadowColor = colors[p.color];
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            
             ctx.beginPath();
             ctx.fillStyle = colors[p.color];
             ctx.arc(x, y, projectileRadius, 0, Math.PI * 2);
             ctx.fill();
+            
+            // Reset shadow
+            ctx.shadowBlur = 0;
 
             if (t >= 1 && !p.applied) {
                 // Apply increment on arrival using unified function

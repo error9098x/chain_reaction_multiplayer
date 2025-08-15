@@ -7,8 +7,8 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: #333;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #000000 100%);
+    color: #ffffff;
     overflow: hidden;
     height: 100vh;
 }
@@ -16,7 +16,7 @@ body {
 /* Custom Titlebar */
 .titlebar {
     height: 32px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
@@ -105,9 +105,9 @@ body {
 }
 
 .game-title {
-    font-size: 4rem;
+    font-size: 2.5rem;
     font-weight: 700;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     line-height: 1.1;
 }
 
@@ -120,26 +120,27 @@ body {
 }
 
 .game-subtitle {
-    font-size: 1.2rem;
-    color: rgba(255, 255, 255, 0.8);
-    margin-bottom: 3rem;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 1.5rem;
     font-weight: 300;
 }
 
 /* Game card */
 .game-card {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-    padding: 1.2rem;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
     text-align: center;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .game-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
 }
 
 .game-card h3 {
@@ -167,9 +168,10 @@ body {
     width: 100%;
     height: auto;
     max-width: 720px;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
 }
 
 .game-hint {
@@ -191,14 +193,15 @@ body {
 }
 
 .game-controls select {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    padding: 0.4rem 0.8rem;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
     color: white;
     font-size: 0.9rem;
     cursor: pointer;
     backdrop-filter: blur(10px);
+    transition: all 0.2s ease;
 }
 
 .game-controls select:focus {
@@ -217,7 +220,12 @@ body {
 /* Responsive Design */
 @media (max-width: 768px) {
     .game-title {
-        font-size: 2.5rem;
+        font-size: 2rem;
+    }
+    
+    .game-subtitle {
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
     }
     
     .container {
@@ -225,7 +233,13 @@ body {
     }
     
     .game-card {
-        padding: 0.8rem;
+        padding: 1rem;
+        border-radius: 12px;
+    }
+    
+    .game-controls {
+        flex-direction: column;
+        gap: 0.3rem;
     }
 }
 
