@@ -55,6 +55,57 @@
         };
     }
 
+    function explodeAt(row, col, color) {
+        const { x: sx, y: sy } = cellCenter(row, col);
+        // reset the exploding cell
+        const origin = grid[row][col];
+        origin.count = 0;
+        origin.color = null;
+
+        const neighbors = [
+            [row - 1, col],
+            [row + 1, col],
+            [row, col - 1],
+            [row, col + 1]
+        ];
+        const startTime = performance.now();
+        for (const [nr, nc] of neighbors) {
+            if (!inBounds(nr, nc)) continue;
+            const { x: ex, y: ey } = cellCenter(nr, nc);
+            projectiles.push({
+                sx, sy, ex, ey,
+                start: startTime,
+                dur: explosionDurationMs,
+                targetR: nr,
+                targetC: nc,
+                color,
+                applied: false,
+                done: false
+            });
+        }
+    }
+
+    // Unified atom add function used by both clicks and projectile arrivals
+    // If sourceIsExplosion is true, we allow adding to any cell regardless of color
+    function addAtomAt(row, col, color, sourceIsExplosion = false) {
+        if (!inBounds(row, col)) return;
+        const cell = grid[row][col];
+        if (cell.count === 0) {
+            cell.count = 1;
+            cell.color = color;
+        } else {
+            if (!sourceIsExplosion && cell.color !== color) {
+                // Ignore adding to opponent cell from click (simple rule for demo)
+                return;
+            }
+            cell.count += 1;
+        }
+
+        if (cell.count > 3) {
+            explodeAt(row, col, color);
+        }
+    }
+
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const now = performance.now();
@@ -121,15 +172,9 @@
             ctx.fill();
 
             if (t >= 1 && !p.applied) {
-                // Apply increment on arrival
+                // Apply increment on arrival using unified function
                 p.applied = true;
-                if (inBounds(p.targetR, p.targetC)) {
-                    const targetCell = grid[p.targetR][p.targetC];
-                    if (targetCell.count === 0) {
-                        targetCell.color = p.color;
-                    }
-                    targetCell.count = Math.min(3, targetCell.count + 1);
-                }
+                addAtomAt(p.targetR, p.targetC, p.color, true);
                 p.done = true;
             }
         }
@@ -170,45 +215,8 @@
         const { r, c } = canvasToCell(e.clientX, e.clientY);
         if (!inBounds(r, c)) return;
 
-        const cell = grid[r][c];
-
-        if (cell.count === 3) {
-            // Single-step overflow with animation: reset clicked cell and animate 4 atoms to neighbors
-            const cellColor = cell.color;
-            cell.count = 0;
-            cell.color = null;
-            const { x: sx, y: sy } = cellCenter(r, c);
-            const neighbors = [
-                [r - 1, c],
-                [r + 1, c],
-                [r, c - 1],
-                [r, c + 1]
-            ];
-            const startTime = performance.now();
-            for (const [nr, nc] of neighbors) {
-                if (!inBounds(nr, nc)) continue;
-                const { x: ex, y: ey } = cellCenter(nr, nc);
-                projectiles.push({
-                    sx, sy, ex, ey,
-                    start: startTime,
-                    dur: explosionDurationMs,
-                    targetR: nr,
-                    targetC: nc,
-                    color: cellColor,
-                    applied: false,
-                    done: false
-                });
-            }
-        } else {
-            // Add atom to empty cell or increment existing (if same color or empty)
-            if (cell.count === 0) {
-                cell.count = 1;
-                cell.color = currentColor;
-            } else if (cell.color === currentColor && cell.count < 3) {
-                cell.count++;
-            }
-            // If different color, do nothing (would be game rule)
-        }
+        // Use unified function for clicks
+        addAtomAt(r, c, currentColor, false);
     });
 
     render();
