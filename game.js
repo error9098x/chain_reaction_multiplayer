@@ -24,14 +24,74 @@
     
     let currentColor = 'red';
     
-    // Dynamic grid background based on current color
+    // Dark grey grid background
     function getGridBg() {
-        const color = colors[currentColor];
-        // Convert hex to rgba with low opacity
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, 0.1)`;
+        return 'rgba(64,64,64,0.2)';
+    }
+    
+    // Audio context for sound effects
+    let audioContext;
+    
+    function initAudio() {
+        try {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.log('Web Audio API not supported');
+        }
+    }
+    
+    function playAtomSound() {
+        if (!audioContext) return;
+        
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        // Quick "pop" sound
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.1);
+    }
+    
+    function playExplosionSound() {
+        if (!audioContext) return;
+        
+        // Create noise for explosion effect
+        const bufferSize = audioContext.sampleRate * 0.3; // 0.3 seconds
+        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // Generate white noise
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.3;
+        }
+        
+        const noise = audioContext.createBufferSource();
+        const filter = audioContext.createBiquadFilter();
+        const gainNode = audioContext.createGain();
+        
+        noise.buffer = buffer;
+        noise.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        // Low-pass filter for more realistic explosion
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2000, audioContext.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        noise.start(audioContext.currentTime);
+        noise.stop(audioContext.currentTime + 0.3);
     }
 
     // Internal pixel size (fixed logical space)
@@ -65,6 +125,9 @@
     }
 
     function explodeAt(row, col, color) {
+        // Play explosion sound
+        playExplosionSound();
+        
         const { x: sx, y: sy } = cellCenter(row, col);
         // reset the exploding cell
         const origin = grid[row][col];
@@ -99,6 +162,12 @@
     function addAtomAt(row, col, color, sourceIsExplosion = false) {
         if (!inBounds(row, col)) return;
         const cell = grid[row][col];
+        
+        // Play atom sound only for manual clicks, not for chain reaction propagation
+        if (!sourceIsExplosion) {
+            playAtomSound();
+        }
+        
         if (cell.count === 0) {
             cell.count = 1;
             cell.color = color;
@@ -122,6 +191,32 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const now = performance.now();
 
+        // Draw grid lines first with team color - bright and vibrant
+        const gridColor = colors[currentColor];
+        ctx.strokeStyle = gridColor;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.8;
+        
+        // Vertical lines
+        for (let c = 0; c <= COLS; c++) {
+            const x = c * cellWidth;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+        
+        // Horizontal lines
+        for (let r = 0; r <= ROWS; r++) {
+            const y = r * cellHeight;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+        
+        ctx.globalAlpha = 1; // Reset alpha
+        
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 const x = c * cellWidth;
@@ -241,6 +336,11 @@
     }
 
     canvas.addEventListener('click', (e) => {
+        // Initialize audio on first click (required by browsers)
+        if (!audioContext) {
+            initAudio();
+        }
+        
         const { r, c } = canvasToCell(e.clientX, e.clientY);
         if (!inBounds(r, c)) return;
 
@@ -248,6 +348,8 @@
         addAtomAt(r, c, currentColor, false);
     });
 
+    // Initialize audio context
+    initAudio();
     render();
 })();
 
