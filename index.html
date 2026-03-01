@@ -7,11 +7,10 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- Custom Navbar -->
     <div class="titlebar" id="titlebar">
         <div class="titlebar-drag-region">
             <div class="window-title">
-                <span class="app-icon">⚛️</span>
+                <img src="logo.icns" alt="Chain Reaction" class="app-icon">
                 <span>Chain Reaction</span>
             </div>
         </div>
@@ -34,33 +33,56 @@
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="container">
-        <div class="game-section">
-            <h1 class="game-title">
-                <span class="gradient-text">Chain Reaction</span>
-            </h1>
-            <p class="game-subtitle">Strategic chain reaction game</p>
-            
-            <div class="game-card">
-                <div class="game-controls">
-                    <label for="player-color">Team Color:</label>
-                    <select id="player-color">
-                        <option value="red" selected>Red</option>
-                        <option value="yellow">Yellow</option>
-                        <option value="green">Green</option>
-                        <option value="blue">Blue</option>
-                        <option value="pink">Pink</option>
-                        <option value="cyan">Cyan</option>
+    <main class="container">
+        <div class="ambient-glow glow-a"></div>
+        <div class="ambient-glow glow-b"></div>
+
+        <section class="menu-screen" id="main-menu">
+            <p class="menu-kicker">ARENA MODE</p>
+            <h1 class="menu-title">Chain Reaction</h1>
+            <p class="menu-subtitle">Capture the board through cascading explosions.</p>
+
+            <div class="menu-panel">
+                <div class="menu-row">
+                    <label for="player-count">Players</label>
+                    <select id="player-count">
+                        <option value="2" selected>2 Players</option>
+                        <option value="3">3 Players</option>
+                        <option value="4">4 Players</option>
+                        <option value="5">5 Players</option>
+                        <option value="6">6 Players</option>
                     </select>
                 </div>
-                <div id="game-wrapper">
-                    <canvas id="chain-canvas" width="720" height="480"></canvas>
+
+                <div class="menu-row">
+                    <label for="starting-player">Starting Team</label>
+                    <select id="starting-player"></select>
                 </div>
-                <p class="game-hint">Click empty cells to add atoms. Click <strong>3</strong> atoms to trigger chain reaction.</p>
+
+                <button id="start-game-btn" class="start-btn">Start Match</button>
+                <p class="menu-footnote">Critical mass depends on position: corners 2, edges 3, center 4.</p>
             </div>
-        </div>
-    </div>
+        </section>
+
+        <section class="game-screen hidden" id="game-screen" aria-hidden="true">
+            <div class="hud-bar">
+                <div class="turn-indicator" id="turn-indicator">
+                    <span class="turn-label">Current Turn</span>
+                    <span class="turn-player" id="turn-player-name">Crimson</span>
+                </div>
+                <div class="hud-actions">
+                    <button id="new-game-btn" class="hud-btn">Restart</button>
+                    <button id="menu-btn" class="hud-btn">Main Menu</button>
+                </div>
+            </div>
+
+            <div id="game-wrapper">
+                <canvas id="chain-canvas" width="720" height="480"></canvas>
+            </div>
+
+            <p class="status-line" id="status-line">Select options in the menu to begin.</p>
+        </section>
+    </main>
 
     <script src="renderer.js"></script>
     <script src="game.js"></script>

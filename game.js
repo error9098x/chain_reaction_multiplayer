@@ -1,121 +1,129 @@
 (() => {
-    // Minimal Chain Reaction demo: grid with red player cells (values 1..3)
-    // On click: if a cell has value 3, it distributes +1 to its 4 neighbors and resets to 0
-
     const canvas = document.getElementById('chain-canvas');
     if (!canvas) return;
+
     const ctx = canvas.getContext('2d');
-
-    // Grid config
-    const COLS = 10;
-    const ROWS = 8;
-    const cellPadding = 2;
-    const textColor = '#ffffff';
-    
-    // Color palette
-    const colors = {
-        red: '#ff4d4f',
-        yellow: '#fadb14',
-        green: '#52c41a',
-        blue: '#1890ff',
-        pink: '#eb2f96',
-        cyan: '#13c2c2'
-    };
-    
-    let currentColor = 'red';
-    
-    // Dark grey grid background
-    function getGridBg() {
-        return 'rgba(64,64,64,0.2)';
-    }
-    
-    // Audio context for sound effects
-    let audioContext;
-    
-    function initAudio() {
-        try {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (e) {
-            console.log('Web Audio API not supported');
-        }
-    }
-    
-    function playAtomSound() {
-        if (!audioContext) return;
-        
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        // Quick "pop" sound
-        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.1);
-    }
-    
-    function playExplosionSound() {
-        if (!audioContext) return;
-        
-        // Create noise for explosion effect
-        const bufferSize = audioContext.sampleRate * 0.3; // 0.3 seconds
-        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
-        const data = buffer.getChannelData(0);
-        
-        // Generate white noise
-        for (let i = 0; i < bufferSize; i++) {
-            data[i] = (Math.random() * 2 - 1) * 0.3;
-        }
-        
-        const noise = audioContext.createBufferSource();
-        const filter = audioContext.createBiquadFilter();
-        const gainNode = audioContext.createGain();
-        
-        noise.buffer = buffer;
-        noise.connect(filter);
-        filter.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        // Low-pass filter for more realistic explosion
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(2000, audioContext.currentTime);
-        filter.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
-        
-        gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-        
-        noise.start(audioContext.currentTime);
-        noise.stop(audioContext.currentTime + 0.3);
-    }
-
-    // Internal pixel size (fixed logical space)
     const logicalWidth = 720;
     const logicalHeight = 480;
     canvas.width = logicalWidth;
     canvas.height = logicalHeight;
 
+    const COLS = 10;
+    const ROWS = 8;
+    const cellPadding = 2;
+    const explosionDurationMs = 180;
+
+    const playerRoster = [
+        { id: 'red', name: 'Crimson', color: '#ff4d4f' },
+        { id: 'yellow', name: 'Amber', color: '#fadb14' },
+        { id: 'green', name: 'Verdant', color: '#52c41a' },
+        { id: 'blue', name: 'Cobalt', color: '#1890ff' },
+        { id: 'pink', name: 'Magenta', color: '#eb2f96' },
+        { id: 'cyan', name: 'Cyan', color: '#13c2c2' }
+    ];
+
+    const colors = Object.fromEntries(playerRoster.map((player) => [player.id, player.color]));
+
+    const mainMenu = document.getElementById('main-menu');
+    const gameScreen = document.getElementById('game-screen');
+    const playerCountSelect = document.getElementById('player-count');
+    const startingPlayerSelect = document.getElementById('starting-player');
+    const startGameBtn = document.getElementById('start-game-btn');
+    const newGameBtn = document.getElementById('new-game-btn');
+    const menuBtn = document.getElementById('menu-btn');
+    const turnPlayerName = document.getElementById('turn-player-name');
+    const statusLine = document.getElementById('status-line');
+
     const cellWidth = Math.floor(logicalWidth / COLS);
     const cellHeight = Math.floor(logicalHeight / ROWS);
 
-    // Grid state: each cell stores { count: 0..3, color: 'red'|'yellow'|etc }
-    const grid = Array.from({ length: ROWS }, () => 
-        Array.from({ length: COLS }, () => ({ count: 0, color: null }))
-    );
-
-    // Seed some test modules
-    grid[3][3] = { count: 1, color: 'red' };
-    grid[3][4] = { count: 2, color: 'red' };
-    grid[3][5] = { count: 3, color: 'red' }; // Click this to trigger distribution
-
-    let animationFrame = 0;
+    let enabledPlayers = playerRoster.slice(0, 2);
+    let currentPlayerIndex = 0;
+    let grid = createGrid();
     let projectiles = [];
-    const explosionDurationMs = 200; // quick animation
+    let animationFrame = 0;
+    let turnCount = 0;
+    let pendingTurnAdvance = false;
+    let winner = null;
+    let gameActive = false;
+    let playerHasMoved = {};
+    let audioContext;
+
+    function createGrid() {
+        return Array.from({ length: ROWS }, () =>
+            Array.from({ length: COLS }, () => ({ count: 0, color: null }))
+        );
+    }
+
+    function initAudio() {
+        if (audioContext) return;
+        try {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (error) {
+            console.log('Web Audio API not supported');
+        }
+    }
+
+    function playAtomSound() {
+        if (!audioContext) return;
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.setValueAtTime(780, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(420, audioContext.currentTime + 0.09);
+        gainNode.gain.setValueAtTime(0.22, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.09);
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.09);
+    }
+
+    function playExplosionSound() {
+        if (!audioContext) return;
+
+        const bufferSize = audioContext.sampleRate * 0.28;
+        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i += 1) {
+            data[i] = (Math.random() * 2 - 1) * 0.26;
+        }
+
+        const noise = audioContext.createBufferSource();
+        const filter = audioContext.createBiquadFilter();
+        const gainNode = audioContext.createGain();
+
+        noise.buffer = buffer;
+        noise.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1900, audioContext.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(130, audioContext.currentTime + 0.28);
+
+        gainNode.gain.setValueAtTime(0.32, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.28);
+
+        noise.start(audioContext.currentTime);
+        noise.stop(audioContext.currentTime + 0.28);
+    }
+
+    function inBounds(row, col) {
+        return row >= 0 && row < ROWS && col >= 0 && col < COLS;
+    }
+
+    function criticalMass(row, col) {
+        let neighbors = 0;
+        if (row > 0) neighbors += 1;
+        if (row < ROWS - 1) neighbors += 1;
+        if (col > 0) neighbors += 1;
+        if (col < COLS - 1) neighbors += 1;
+        return neighbors;
+    }
 
     function cellCenter(row, col) {
         return {
@@ -125,14 +133,11 @@
     }
 
     function explodeAt(row, col, color) {
-        // Play explosion sound
         playExplosionSound();
-        
+
         const { x: sx, y: sy } = cellCenter(row, col);
-        // reset the exploding cell
-        const origin = grid[row][col];
-        origin.count = 0;
-        origin.color = null;
+        grid[row][col].count = 0;
+        grid[row][col].color = null;
 
         const neighbors = [
             [row - 1, col],
@@ -140,16 +145,21 @@
             [row, col - 1],
             [row, col + 1]
         ];
+
         const startTime = performance.now();
-        for (const [nr, nc] of neighbors) {
-            if (!inBounds(nr, nc)) continue;
-            const { x: ex, y: ey } = cellCenter(nr, nc);
+
+        for (const [neighborRow, neighborCol] of neighbors) {
+            if (!inBounds(neighborRow, neighborCol)) continue;
+            const { x: ex, y: ey } = cellCenter(neighborRow, neighborCol);
             projectiles.push({
-                sx, sy, ex, ey,
+                sx,
+                sy,
+                ex,
+                ey,
                 start: startTime,
                 dur: explosionDurationMs,
-                targetR: nr,
-                targetC: nc,
+                targetRow: neighborRow,
+                targetCol: neighborCol,
                 color,
                 applied: false,
                 done: false
@@ -157,200 +167,343 @@
         }
     }
 
-    // Unified atom add function used by both clicks and projectile arrivals
-    // If sourceIsExplosion is true, we allow adding to any cell regardless of color
     function addAtomAt(row, col, color, sourceIsExplosion = false) {
-        if (!inBounds(row, col)) return;
+        if (!inBounds(row, col)) return false;
+
         const cell = grid[row][col];
-        
-        // Play atom sound only for manual clicks, not for chain reaction propagation
+
+        if (!sourceIsExplosion && cell.count > 0 && cell.color !== color) {
+            return false;
+        }
+
         if (!sourceIsExplosion) {
             playAtomSound();
         }
-        
+
         if (cell.count === 0) {
-            cell.count = 1;
             cell.color = color;
-        } else {
-            if (sourceIsExplosion) {
-                // Explosion converts ownership
-                cell.color = color;
-            } else if (cell.color !== color) {
-                // Ignore adding to opponent cell from click (simple rule for demo)
-                return;
-            }
-            cell.count += 1;
+        } else if (sourceIsExplosion) {
+            cell.color = color;
         }
 
-        if (cell.count > 3) {
+        cell.count += 1;
+
+        if (cell.count >= criticalMass(row, col)) {
             explodeAt(row, col, color);
         }
+
+        return true;
     }
 
-    function render() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const now = performance.now();
+    function atomCounts() {
+        const counts = Object.fromEntries(enabledPlayers.map((player) => [player.id, 0]));
 
-        // Draw grid lines first with team color - bright and vibrant
-        const gridColor = colors[currentColor];
-        ctx.strokeStyle = gridColor;
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.8;
-        
-        // Vertical lines
-        for (let c = 0; c <= COLS; c++) {
-            const x = c * cellWidth;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, canvas.height);
-            ctx.stroke();
-        }
-        
-        // Horizontal lines
-        for (let r = 0; r <= ROWS; r++) {
-            const y = r * cellHeight;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(canvas.width, y);
-            ctx.stroke();
-        }
-        
-        ctx.globalAlpha = 1; // Reset alpha
-        
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
-                const x = c * cellWidth;
-                const y = r * cellHeight;
-
-                // Background cell with dynamic color
-                ctx.fillStyle = getGridBg();
-                ctx.fillRect(x + cellPadding, y + cellPadding, cellWidth - 2 * cellPadding, cellHeight - 2 * cellPadding);
-
-                const cell = grid[r][c];
-                if (cell.count > 0) {
-                    // Draw 1, 2, or 3 atoms (small circles). 3 is "excited" (jitter animation)
-                    const cx = x + cellWidth / 2;
-                    const cy = y + cellHeight / 2;
-                    const minDim = Math.min(cellWidth, cellHeight);
-                    const atomRadius = minDim * 0.12;
-                    const spacing = atomRadius * 1.3; // slight overlap to look "stuck"
-
-                    // Slight vibration for active (3)
-                    let jitterX = 0, jitterY = 0;
-                    if (cell.count === 3) {
-                        jitterX = Math.sin(animationFrame / 6 + (r * 7 + c)) * 1.8;
-                        jitterY = Math.cos(animationFrame / 6 + (r * 5 + c * 3)) * 1.8;
-                    }
-
-                    // Set up glow effect
-                    ctx.shadowColor = colors[cell.color];
-                    ctx.shadowBlur = 15;
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = 0;
-                    ctx.fillStyle = colors[cell.color];
-
-                    const drawAtom = (ax, ay) => {
-                        ctx.beginPath();
-                        ctx.arc(ax, ay, atomRadius, 0, Math.PI * 2);
-                        ctx.fill();
-                    };
-
-                    if (cell.count === 1) {
-                        drawAtom(cx + jitterX, cy + jitterY);
-                    } else if (cell.count === 2) {
-                        // Two atoms side-by-side
-                        drawAtom(cx - spacing + jitterX, cy + jitterY);
-                        drawAtom(cx + spacing + jitterX, cy + jitterY);
-                    } else if (cell.count === 3) {
-                        // Triangle cluster
-                        drawAtom(cx - spacing + jitterX, cy - spacing * 0.6 + jitterY);
-                        drawAtom(cx + spacing + jitterX, cy - spacing * 0.6 + jitterY);
-                        drawAtom(cx + jitterX, cy + spacing * 0.8 + jitterY);
-                    }
-                    
-                    // Reset shadow for other drawing operations
-                    ctx.shadowBlur = 0;
+        for (let row = 0; row < ROWS; row += 1) {
+            for (let col = 0; col < COLS; col += 1) {
+                const cell = grid[row][col];
+                if (cell.count > 0 && counts[cell.color] !== undefined) {
+                    counts[cell.color] += cell.count;
                 }
             }
         }
 
-        // Draw projectiles for overflow animation
-        const projectileRadius = Math.min(cellWidth, cellHeight) * 0.12;
-        for (const p of projectiles) {
-            const t = Math.min(1, (now - p.start) / p.dur);
-            const x = p.sx + (p.ex - p.sx) * t;
-            const y = p.sy + (p.ey - p.sy) * t;
+        return counts;
+    }
 
-            // Add glow to projectiles too
-            ctx.shadowColor = colors[p.color];
-            ctx.shadowBlur = 10;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            
-            ctx.beginPath();
-            ctx.fillStyle = colors[p.color];
-            ctx.arc(x, y, projectileRadius, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Reset shadow
-            ctx.shadowBlur = 0;
+    function currentPlayer() {
+        return enabledPlayers[currentPlayerIndex];
+    }
 
-            if (t >= 1 && !p.applied) {
-                // Apply increment on arrival using unified function
-                p.applied = true;
-                addAtomAt(p.targetR, p.targetC, p.color, true);
-                p.done = true;
+    function setStatus(message) {
+        if (statusLine) {
+            statusLine.textContent = message;
+        }
+    }
+
+    function setActiveColor(hexColor) {
+        const activeSoft = hexToRgba(hexColor, 0.35);
+        document.documentElement.style.setProperty('--active-color', hexColor);
+        document.documentElement.style.setProperty('--active-color-soft', activeSoft);
+    }
+
+    function updateTurnUi() {
+        if (!gameActive) return;
+
+        if (winner) {
+            turnPlayerName.textContent = `${winner.name} Wins`;
+            setActiveColor(winner.color);
+            return;
+        }
+
+        const player = currentPlayer();
+        turnPlayerName.textContent = player.name;
+        setActiveColor(player.color);
+    }
+
+    function findNextPlayerIndex(counts) {
+        let nextIndex = currentPlayerIndex;
+
+        for (let step = 0; step < enabledPlayers.length; step += 1) {
+            nextIndex = (nextIndex + 1) % enabledPlayers.length;
+
+            if (turnCount < enabledPlayers.length) {
+                return nextIndex;
+            }
+
+            const candidate = enabledPlayers[nextIndex];
+            if (counts[candidate.id] > 0) {
+                return nextIndex;
             }
         }
 
-        // Remove finished projectiles
-        if (projectiles.length) {
-            projectiles = projectiles.filter(p => !p.done);
-        }
-
-        animationFrame++;
-        requestAnimationFrame(render);
+        return currentPlayerIndex;
     }
 
-    function inBounds(r, c) {
-        return r >= 0 && r < ROWS && c >= 0 && c < COLS;
+    function finalizeTurnIfReady() {
+        if (!pendingTurnAdvance || projectiles.length > 0 || !gameActive) return;
+
+        pendingTurnAdvance = false;
+
+        const counts = atomCounts();
+
+        if (turnCount >= enabledPlayers.length) {
+            const survivors = enabledPlayers.filter((player) => counts[player.id] > 0);
+            if (survivors.length === 1) {
+                winner = survivors[0];
+                updateTurnUi();
+                setStatus(`${winner.name} controls the board.`);
+                return;
+            }
+        }
+
+        currentPlayerIndex = findNextPlayerIndex(counts);
+        updateTurnUi();
+        setStatus(`${currentPlayer().name} to move.`);
     }
 
     function canvasToCell(clientX, clientY) {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
+
         const x = (clientX - rect.left) * scaleX;
         const y = (clientY - rect.top) * scaleY;
-        const c = Math.floor(x / cellWidth);
-        const r = Math.floor(y / cellHeight);
-        return { r, c };
+
+        return {
+            row: Math.floor(y / cellHeight),
+            col: Math.floor(x / cellWidth)
+        };
     }
 
-    // Color dropdown handler
-    const colorSelect = document.getElementById('player-color');
-    if (colorSelect) {
-        colorSelect.addEventListener('change', (e) => {
-            currentColor = e.target.value;
-        });
-    }
+    function refreshStartingPlayerOptions() {
+        const selectedPlayers = Number(playerCountSelect.value);
+        const previousSelection = Number(startingPlayerSelect.value || 0);
 
-    canvas.addEventListener('click', (e) => {
-        // Initialize audio on first click (required by browsers)
-        if (!audioContext) {
-            initAudio();
+        startingPlayerSelect.innerHTML = '';
+
+        for (let index = 0; index < selectedPlayers; index += 1) {
+            const player = playerRoster[index];
+            const option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = player.name;
+            startingPlayerSelect.appendChild(option);
         }
-        
-        const { r, c } = canvasToCell(e.clientX, e.clientY);
-        if (!inBounds(r, c)) return;
 
-        // Use unified function for clicks
-        addAtomAt(r, c, currentColor, false);
-    });
+        if (previousSelection < selectedPlayers) {
+            startingPlayerSelect.value = String(previousSelection);
+        }
+    }
 
-    // Initialize audio context
-    initAudio();
-    render();
+    function startMatch() {
+        const selectedPlayers = Number(playerCountSelect.value);
+        enabledPlayers = playerRoster.slice(0, selectedPlayers);
+        refreshStartingPlayerOptions();
+
+        const selectedStarter = Number(startingPlayerSelect.value || 0);
+
+        grid = createGrid();
+        projectiles = [];
+        winner = null;
+        pendingTurnAdvance = false;
+        turnCount = 0;
+        playerHasMoved = Object.fromEntries(enabledPlayers.map((player) => [player.id, false]));
+
+        currentPlayerIndex = Math.min(selectedStarter, enabledPlayers.length - 1);
+        gameActive = true;
+
+        mainMenu.classList.add('hidden');
+        gameScreen.classList.remove('hidden');
+        gameScreen.setAttribute('aria-hidden', 'false');
+
+        updateTurnUi();
+        setStatus(`${currentPlayer().name} starts the match.`);
+    }
+
+    function returnToMenu() {
+        gameActive = false;
+        winner = null;
+        pendingTurnAdvance = false;
+        projectiles = [];
+
+        gameScreen.classList.add('hidden');
+        gameScreen.setAttribute('aria-hidden', 'true');
+        mainMenu.classList.remove('hidden');
+
+        setStatus('Select options in the menu to begin.');
+    }
+
+    function renderGrid() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const activeColor = gameActive ? currentPlayer().color : playerRoster[0].color;
+        ctx.strokeStyle = activeColor;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.82;
+
+        for (let col = 0; col <= COLS; col += 1) {
+            const x = col * cellWidth;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+
+        for (let row = 0; row <= ROWS; row += 1) {
+            const y = row * cellHeight;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1;
+
+        for (let row = 0; row < ROWS; row += 1) {
+            for (let col = 0; col < COLS; col += 1) {
+                const x = col * cellWidth;
+                const y = row * cellHeight;
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+                ctx.fillRect(x + cellPadding, y + cellPadding, cellWidth - 2 * cellPadding, cellHeight - 2 * cellPadding);
+
+                const cell = grid[row][col];
+                if (cell.count === 0) continue;
+
+                const cx = x + cellWidth / 2;
+                const cy = y + cellHeight / 2;
+                const minDimension = Math.min(cellWidth, cellHeight);
+                const atomRadius = minDimension * 0.12;
+                const spacing = atomRadius * 1.3;
+
+                let jitterX = 0;
+                let jitterY = 0;
+
+                if (cell.count + 1 >= criticalMass(row, col)) {
+                    jitterX = Math.sin(animationFrame / 6 + (row * 7 + col)) * 1.8;
+                    jitterY = Math.cos(animationFrame / 6 + (row * 5 + col * 3)) * 1.8;
+                }
+
+                ctx.shadowColor = colors[cell.color];
+                ctx.shadowBlur = 14;
+                ctx.fillStyle = colors[cell.color];
+
+                const drawAtom = (atomX, atomY) => {
+                    ctx.beginPath();
+                    ctx.arc(atomX, atomY, atomRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                };
+
+                if (cell.count === 1) {
+                    drawAtom(cx + jitterX, cy + jitterY);
+                } else if (cell.count === 2) {
+                    drawAtom(cx - spacing + jitterX, cy + jitterY);
+                    drawAtom(cx + spacing + jitterX, cy + jitterY);
+                } else {
+                    drawAtom(cx - spacing + jitterX, cy - spacing * 0.6 + jitterY);
+                    drawAtom(cx + spacing + jitterX, cy - spacing * 0.6 + jitterY);
+                    drawAtom(cx + jitterX, cy + spacing * 0.8 + jitterY);
+                }
+
+                ctx.shadowBlur = 0;
+            }
+        }
+    }
+
+    function renderProjectiles(now) {
+        const projectileRadius = Math.min(cellWidth, cellHeight) * 0.12;
+
+        for (const projectile of projectiles) {
+            const progress = Math.min(1, (now - projectile.start) / projectile.dur);
+            const x = projectile.sx + (projectile.ex - projectile.sx) * progress;
+            const y = projectile.sy + (projectile.ey - projectile.sy) * progress;
+
+            ctx.shadowColor = colors[projectile.color];
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = colors[projectile.color];
+            ctx.beginPath();
+            ctx.arc(x, y, projectileRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            if (progress >= 1 && !projectile.applied) {
+                projectile.applied = true;
+                addAtomAt(projectile.targetRow, projectile.targetCol, projectile.color, true);
+                projectile.done = true;
+            }
+        }
+
+        if (projectiles.length > 0) {
+            projectiles = projectiles.filter((projectile) => !projectile.done);
+        }
+    }
+
+    function render(now) {
+        renderGrid();
+        renderProjectiles(now);
+        finalizeTurnIfReady();
+
+        animationFrame += 1;
+        requestAnimationFrame(render);
+    }
+
+    function handleCanvasClick(event) {
+        if (!gameActive || winner || projectiles.length > 0) return;
+
+        initAudio();
+
+        const { row, col } = canvasToCell(event.clientX, event.clientY);
+        if (!inBounds(row, col)) return;
+
+        const player = currentPlayer();
+        const moved = addAtomAt(row, col, player.id, false);
+
+        if (!moved) {
+            setStatus('Move blocked: you can play only on empty or owned cells.');
+            return;
+        }
+
+        playerHasMoved[player.id] = true;
+        turnCount += 1;
+        pendingTurnAdvance = true;
+
+        finalizeTurnIfReady();
+    }
+
+    function hexToRgba(hex, alpha) {
+        const normalized = hex.replace('#', '');
+        const r = parseInt(normalized.substring(0, 2), 16);
+        const g = parseInt(normalized.substring(2, 4), 16);
+        const b = parseInt(normalized.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    playerCountSelect.addEventListener('change', refreshStartingPlayerOptions);
+    startGameBtn.addEventListener('click', startMatch);
+    newGameBtn.addEventListener('click', startMatch);
+    menuBtn.addEventListener('click', returnToMenu);
+    canvas.addEventListener('click', handleCanvasClick);
+
+    refreshStartingPlayerOptions();
+    setActiveColor(playerRoster[0].color);
+    render(performance.now());
 })();
-
-

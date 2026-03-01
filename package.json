@@ -1,7 +1,7 @@
 {
-  "name": "electron-hello-world",
+  "name": "chain-reaction-game",
   "version": "1.0.0",
-  "description": "A Hello World Electron app with custom navbar",
+  "description": "A Chain Reaction Game",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -10,10 +10,9 @@
   },
   "keywords": [
     "electron",
-    "hello-world",
-    "custom-navbar"
+    "chain-reaction-game"
   ],
-  "author": "Your Name",
+  "author": "Aviral",
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.0.0"

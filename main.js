@@ -20,7 +20,7 @@ function createWindow() {
       enableRemoteModule: false, // Security best practice
       preload: path.join(__dirname, 'preload.js')
     },
-    icon: path.join(__dirname, 'assets/icon.png'), // Optional: add app icon
+    icon: '/Users/aviral/Desktop/Chain Reaction/chain_reaction.png', // Absolute path
     show: false // Don't show until ready
   });
 
