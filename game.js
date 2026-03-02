@@ -114,16 +114,14 @@ let amHost = false;
 let grid = createGrid();
 let projectiles = [];
 let animationFrame = 0;
-let turnCount = 0;
-let pendingTurnAdvance = false;
+let pendingServerEvents = [];
+let targetGrid = null;
+let targetTurnIndex = 0;
 let winner = null;
 let gameActive = false;
 let audioContext;
 let statsDirty = true;
-let totalExplosions = 0;
-let eliminatedPlayers = new Set();
 let isRendering = false;
-let hasVotedRematch = false;
 
 function createGrid() {
     return Array.from({ length: ROWS }, () =>
@@ -294,28 +292,34 @@ startGameBtn.addEventListener('click', () => {
 socket.on('matchStarted', ({ players, turnIndex }) => {
     enabledPlayers = players;
     currentPlayerIndex = turnIndex;
+    targetTurnIndex = turnIndex;
+    grid = createGrid();
+    targetGrid = null;
+    pendingServerEvents = [];
+    projectiles = [];
     startMatchUI();
 });
 
-// ─── ATOM PLACED (from server, for all clients) ───
-socket.on('atomPlaced', ({ row, col, playerIndex }) => {
-    if (!gameActive && projectiles.length === 0) return;
-    currentPlayerIndex = playerIndex;
-    const player = enabledPlayers[currentPlayerIndex];
-    addAtomAt(row, col, player.color, false);
-});
-
-// ─── TURN SYNCED (server broadcasts authoritative turn index) ───
-socket.on('turnSynced', ({ turnIndex }) => {
+// ─── GAME STATE UPDATE (Server-Authoritative) ───
+socket.on('gameStateUpdate', ({ events, grid: serverGrid, turnIndex }) => {
     if (!gameActive) return;
-    if (turnIndex !== currentPlayerIndex) {
+
+    if (!events || events.length === 0) {
+        // Just a sync correction (e.g. invalid move or out of turn)
+        grid = serverGrid;
         currentPlayerIndex = turnIndex;
         statsDirty = true;
-        // Ensure render loop is running to update the HUD
-        if (!isRendering) {
-            isRendering = true;
-            requestAnimationFrame(render);
-        }
+        if (!isRendering) { isRendering = true; requestAnimationFrame(render); }
+        return;
+    }
+
+    pendingServerEvents = pendingServerEvents.concat(events);
+    targetGrid = serverGrid;
+    targetTurnIndex = turnIndex;
+
+    if (!isRendering) {
+        isRendering = true;
+        requestAnimationFrame(render);
     }
 });
 
@@ -541,46 +545,6 @@ function cellCenter(row, col) {
     return { x: col * cellWidth + cellWidth / 2, y: row * cellHeight + cellHeight / 2 };
 }
 
-function explodeAt(row, col, color) {
-    playExplosionSound();
-    totalExplosions++;
-    const { x: sx, y: sy } = cellCenter(row, col);
-    grid[row][col].count = 0;
-    grid[row][col].color = null;
-    statsDirty = true;
-
-    const neighbors = [[row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]];
-    const startTime = performance.now();
-
-    for (const [nr, nc] of neighbors) {
-        if (!inBounds(nr, nc)) continue;
-        const { x: ex, y: ey } = cellCenter(nr, nc);
-        projectiles.push({
-            sx, sy, ex, ey, start: startTime, dur: explosionDurationMs,
-            targetRow: nr, targetCol: nc, color, applied: false, done: false
-        });
-    }
-}
-
-function addAtomAt(row, col, color, sourceIsExplosion = false) {
-    if (!inBounds(row, col)) return false;
-    const cell = grid[row][col];
-
-    if (!sourceIsExplosion && cell.count > 0 && cell.color !== color) return false;
-    if (!sourceIsExplosion) playAtomSound();
-
-    cell.color = color;
-    cell.count += 1;
-    statsDirty = true;
-
-    if (!sourceIsExplosion) pendingTurnAdvance = true;
-
-    if (cell.count >= criticalMass(row, col)) {
-        explodeAt(row, col, color);
-    }
-    return true;
-}
-
 function atomCounts() {
     const counts = {};
     enabledPlayers.forEach(p => counts[p.color] = 0);
@@ -595,50 +559,55 @@ function atomCounts() {
     return counts;
 }
 
-function findNextPlayerIndex(counts) {
-    let nextIndex = currentPlayerIndex;
-    for (let step = 0; step < enabledPlayers.length; step++) {
-        nextIndex = (nextIndex + 1) % enabledPlayers.length;
-        const player = enabledPlayers[nextIndex];
-        // Skip offline players
-        if (player.offline) continue;
-        if (turnCount < enabledPlayers.length || counts[player.color] > 0) {
-            return nextIndex;
+// ═══════════════════════════════════════════════════════════
+// EVENT PROCESSING (Server-Authoritative Animation)
+// ═══════════════════════════════════════════════════════════
+
+function processServerEvents(now) {
+    // Wait for flying projectiles to land before processing the next explosion wave
+    if (projectiles.length > 0) return;
+
+    if (pendingServerEvents.length === 0) {
+        // All events processed, perfectly sync local grid to server's target grid
+        if (targetGrid) {
+            grid = targetGrid;
+            targetGrid = null;
+            currentPlayerIndex = targetTurnIndex;
+            statsDirty = true;
         }
+        return;
     }
-    return currentPlayerIndex;
-}
 
-function finalizeTurnIfReady() {
-    if (!pendingTurnAdvance || projectiles.length > 0 || !gameActive) return;
-    pendingTurnAdvance = false;
-    turnCount++;
+    const event = pendingServerEvents.shift();
 
-    const counts = atomCounts();
-    if (turnCount >= enabledPlayers.length) {
-        const survivors = enabledPlayers.filter(p => !p.offline && counts[p.color] > 0);
-        if (survivors.length === 1) {
-            winner = survivors[0];
-            // Host reports winner to server for synchronized notification
-            if (amHost) {
-                socket.emit('gameOver', { code: roomCode, winnerId: winner.id });
+    if (event.type === 'place') {
+        playAtomSound();
+        grid[event.row][event.col].color = event.color;
+        grid[event.row][event.col].count += 1;
+        statsDirty = true;
+    }
+    else if (event.type === 'explodeWave') {
+        playExplosionSound();
+        for (const exp of event.explosions) {
+            const { row, col, color } = exp;
+
+            // Empty the cell visually
+            grid[row][col].count = 0;
+            grid[row][col].color = null;
+
+            const { x: sx, y: sy } = cellCenter(row, col);
+            const neighbors = [[row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]];
+
+            for (const [nr, nc] of neighbors) {
+                if (!inBounds(nr, nc)) continue;
+                const { x: ex, y: ey } = cellCenter(nr, nc);
+                projectiles.push({
+                    sx, sy, ex, ey, start: now, dur: explosionDurationMs,
+                    targetRow: nr, targetCol: nc, color, applied: false, done: false
+                });
             }
-            statsDirty = true;
-            return;
         }
-        if (survivors.length === 0) {
-            // Edge case: all wiped simultaneously — draw or last player standing
-            statsDirty = true;
-            return;
-        }
-    }
-
-    currentPlayerIndex = findNextPlayerIndex(counts);
-    statsDirty = true;
-
-    // Only the host syncs the next turn index to server
-    if (amHost) {
-        socket.emit('syncTurn', { code: roomCode, newTurnIndex: currentPlayerIndex });
+        statsDirty = true;
     }
 }
 
@@ -653,8 +622,8 @@ function updateHudStats() {
         scoreBar.innerHTML = '';
         enabledPlayers.forEach(p => {
             const c = counts[p.color] || 0;
-            const isEliminated = (turnCount >= enabledPlayers.length && c === 0) || p.offline;
-            const isMyTurn = (enabledPlayers[currentPlayerIndex].id === p.id);
+            const isEliminated = false; // Elimination styling logic removed for now to simplify, could be re-added via server flag
+            const isMyTurn = (enabledPlayers[currentPlayerIndex]?.id === p.id);
             const playerColor = themeColors[p.color] || '#fff';
 
             const chip = document.createElement('div');
@@ -794,21 +763,26 @@ function renderProjectiles(now) {
 
         if (prog >= 1 && !p.applied) {
             p.applied = true; p.done = true;
-            addAtomAt(p.targetRow, p.targetCol, p.color, true);
+            // Visually add the atom to the receiver cell
+            grid[p.targetRow][p.targetCol].color = p.color;
+            grid[p.targetRow][p.targetCol].count += 1;
+            statsDirty = true;
         }
     }
     if (projectiles.length > 0) projectiles = projectiles.filter(p => !p.done);
 }
 
 function render(now) {
-    if (!gameActive && projectiles.length === 0) {
+    if (!gameActive && projectiles.length === 0 && pendingServerEvents.length === 0) {
         isRendering = false;
         return;
     }
 
     renderGrid();
     renderProjectiles(now);
-    finalizeTurnIfReady();
+
+    // Process server-dictated game ticks
+    processServerEvents(now);
 
     if (statsDirty) {
         updateHudStats();
@@ -816,8 +790,11 @@ function render(now) {
     }
 
     animationFrame++;
-    if (gameActive || projectiles.length > 0) requestAnimationFrame(render);
-    else isRendering = false;
+    if (gameActive || projectiles.length > 0 || pendingServerEvents.length > 0) {
+        requestAnimationFrame(render);
+    } else {
+        isRendering = false;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
