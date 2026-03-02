@@ -1102,6 +1102,225 @@ canvas {
     transform: translateY(0) scale(1);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   GAME GUIDE
+   ═══════════════════════════════════════════════════════════ */
+
+/* Info button — top-right of main menu */
+.guide-info-btn {
+    position: absolute;
+    top: var(--space-lg);
+    right: var(--space-lg);
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 2px solid rgba(74, 140, 255, 0.2);
+    color: var(--p-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow:
+        0 2px 8px rgba(74, 140, 255, 0.15),
+        0 1px 3px rgba(0, 0, 0, 0.06);
+    transition:
+        transform 0.15s var(--ease-bounce),
+        box-shadow 0.15s ease,
+        border-color 0.2s ease;
+    animation: guide-btn-pulse 3s ease-in-out infinite;
+}
+
+.guide-info-btn:hover {
+    transform: scale(1.1);
+    border-color: var(--p-blue);
+    box-shadow:
+        0 4px 16px rgba(74, 140, 255, 0.25),
+        0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.guide-info-btn:active {
+    transform: scale(0.92);
+}
+
+@keyframes guide-btn-pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 2px 8px rgba(74, 140, 255, 0.15), 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    50% {
+        box-shadow: 0 2px 16px rgba(74, 140, 255, 0.3), 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+}
+
+/* Overlay — full-screen */
+.guide-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: rgba(15, 18, 25, 0.6);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: guide-overlay-in 0.3s ease;
+}
+
+@keyframes guide-overlay-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Container card */
+.guide-container {
+    width: 92%;
+    max-width: 380px;
+    background: var(--bg-white);
+    border-radius: var(--radius-2xl);
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.2),
+        0 2px 8px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: guide-card-in 0.35s var(--ease-bounce);
+    max-height: 90dvh;
+}
+
+@keyframes guide-card-in {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Top bar */
+.guide-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) var(--space-md);
+    border-bottom: 1.5px solid rgba(58, 70, 96, 0.07);
+    flex-shrink: 0;
+}
+
+.guide-title {
+    font-family: var(--font-body);
+    font-weight: 900;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+/* Slide area */
+.guide-slide-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-xl) var(--space-lg) var(--space-md);
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Canvas box — the "GIF" animation area */
+.guide-canvas-box {
+    width: 220px;
+    height: 220px;
+    border-radius: var(--radius-xl);
+    background: #181c27;
+    border: 2.5px solid rgba(74, 140, 255, 0.15);
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.12),
+        inset 0 1px 3px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.guide-canvas-box canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Text area below canvas */
+.guide-text-area {
+    text-align: center;
+    padding: var(--space-lg) var(--space-sm) 0;
+    min-height: 100px;
+}
+
+.guide-slide-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    color: var(--text-primary);
+    margin-bottom: var(--space-sm);
+    line-height: 1.2;
+}
+
+.guide-slide-desc {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.55;
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+/* Bottom nav */
+.guide-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) var(--space-lg) var(--space-xl);
+    border-top: 1.5px solid rgba(58, 70, 96, 0.07);
+    flex-shrink: 0;
+}
+
+.guide-nav-btn {
+    min-width: 80px;
+}
+
+/* Progress dots */
+.guide-dots {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.guide-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(58, 70, 96, 0.15);
+    transition: all 0.25s var(--ease-bounce);
+}
+
+.guide-dot.active {
+    width: 24px;
+    border-radius: 4px;
+    background: var(--p-blue);
+    box-shadow: 0 1px 6px rgba(74, 140, 255, 0.35);
+}
+
 /* ── UTILITY — must be last for override priority ── */
 .hidden {
     display: none;

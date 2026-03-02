@@ -715,7 +715,7 @@ function renderGrid() {
 
             const cx = c * cellWidth + cellWidth / 2;
             const cy = r * cellHeight + cellHeight / 2;
-            const radius = Math.min(cellWidth, cellHeight) * 0.22;
+            const radius = Math.min(cellWidth, cellHeight) * 0.18;
             const sp = radius * 1.3;
 
             let jx = 0, jy = 0;
@@ -763,7 +763,7 @@ function renderGrid() {
 }
 
 function renderProjectiles(now) {
-    const radius = Math.min(cellWidth, cellHeight) * 0.22;
+    const radius = Math.min(cellWidth, cellHeight) * 0.18;
     for (const p of projectiles) {
         const prog = Math.min(1, (now - p.start) / p.dur);
         const x = p.sx + (p.ex - p.sx) * prog;
@@ -836,3 +836,508 @@ canvas.addEventListener('click', (e) => {
         showToast("You can only place on empty cells or your own.");
     }
 });
+
+// ═══════════════════════════════════════════════════════════
+// GAME GUIDE — "How to Play" Auto-playing Animated Slides
+// ═══════════════════════════════════════════════════════════
+
+(function GameGuide() {
+    const overlay = document.getElementById('guide-overlay');
+    const openBtn = document.getElementById('guide-open-btn');
+    const closeBtn = document.getElementById('guide-close-btn');
+    const prevBtn = document.getElementById('guide-prev-btn');
+    const nextBtn = document.getElementById('guide-next-btn');
+    const dotsEl = document.getElementById('guide-dots');
+    const titleEl = document.getElementById('guide-slide-title');
+    const descEl = document.getElementById('guide-slide-desc');
+    const gCanvas = document.getElementById('guide-canvas');
+    const gCtx = gCanvas.getContext('2d');
+
+    if (!overlay || !gCanvas) return;
+
+    const W = 560, H = 560;
+    let currentSlide = 0;
+    let animId = null;
+
+    const colors = {
+        red: '#f25c5c', blue: '#4a8cff', green: '#3cc88c',
+        yellow: '#ffc63e', purple: '#9b6dff', grid: 'rgba(74, 140, 255, 0.25)'
+    };
+
+    // ── SLIDE DEFINITIONS ──
+
+    const slides = [
+        {
+            title: 'Chain Reaction',
+            desc: 'A strategic multiplayer game! Place atoms on the grid, trigger explosive chain reactions, and convert your opponent\'s atoms to dominate the board.',
+            draw: drawSlide0
+        },
+        {
+            title: 'Placing Atoms',
+            desc: 'Tap any empty cell to place your atom. You can also stack atoms on your own cells — but never on your opponent\'s!',
+            draw: drawSlide1
+        },
+        {
+            title: 'Critical Mass',
+            desc: 'Each cell has a limit: corners hold 2, edges hold 3, center cells hold 4. When a cell exceeds its limit, it explodes!',
+            draw: drawSlide2
+        },
+        {
+            title: 'Chain Reactions',
+            desc: 'Explosions send atoms to neighbors, converting them to your color. This can trigger a cascade of explosions across the board!',
+            draw: drawSlide3
+        },
+        {
+            title: 'Win the Game',
+            desc: 'Eliminate every opponent atom from the board. The last player standing wins! 🏆',
+            draw: drawSlide4
+        }
+    ];
+
+    // ── NAVIGATION ──
+
+    function buildDots() {
+        dotsEl.innerHTML = '';
+        slides.forEach((_, i) => {
+            const d = document.createElement('div');
+            d.className = 'guide-dot' + (i === currentSlide ? ' active' : '');
+            dotsEl.appendChild(d);
+        });
+    }
+
+    function updateSlide() {
+        const s = slides[currentSlide];
+        titleEl.textContent = s.title;
+        descEl.textContent = s.desc;
+        prevBtn.style.visibility = currentSlide === 0 ? 'hidden' : 'visible';
+        nextBtn.querySelector('.btn-content').textContent = currentSlide === slides.length - 1 ? 'DONE' : 'NEXT ›';
+        buildDots();
+        startAnimation();
+    }
+
+    function open() {
+        currentSlide = 0;
+        overlay.classList.remove('hidden');
+        updateSlide();
+    }
+
+    function close() {
+        stopAnimation();
+        overlay.classList.add('hidden');
+    }
+
+    openBtn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    prevBtn.addEventListener('click', () => {
+        if (currentSlide > 0) { currentSlide--; updateSlide(); }
+    });
+
+    nextBtn.addEventListener('click', () => {
+        if (currentSlide < slides.length - 1) { currentSlide++; updateSlide(); }
+        else close();
+    });
+
+    // ── ANIMATION CORE ──
+
+    function stopAnimation() {
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
+    }
+
+    function startAnimation() {
+        stopAnimation();
+        const drawFn = slides[currentSlide].draw;
+        const startTime = performance.now();
+        function loop(now) {
+            const t = (now - startTime) / 1000; // seconds
+            gCtx.clearRect(0, 0, W, H);
+            drawFn(gCtx, t, W, H);
+            animId = requestAnimationFrame(loop);
+        }
+        animId = requestAnimationFrame(loop);
+    }
+
+    // ── SHARED DRAWING HELPERS ──
+
+    function drawSphere(ctx, x, y, r, color) {
+        // Main fill + glow
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // Highlight
+        ctx.beginPath();
+        ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.38, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fill();
+    }
+
+    function drawMiniGrid(ctx, ox, oy, rows, cols, cellSize) {
+        ctx.strokeStyle = colors.grid;
+        ctx.lineWidth = 2;
+        for (let c = 0; c <= cols; c++) {
+            ctx.beginPath(); ctx.moveTo(ox + c * cellSize, oy);
+            ctx.lineTo(ox + c * cellSize, oy + rows * cellSize); ctx.stroke();
+        }
+        for (let r = 0; r <= rows; r++) {
+            ctx.beginPath(); ctx.moveTo(ox, oy + r * cellSize);
+            ctx.lineTo(ox + cols * cellSize, oy + r * cellSize); ctx.stroke();
+        }
+    }
+
+    // ── SLIDE 0: Welcome — orbiting atoms ──
+
+    function drawSlide0(ctx, t, w, h) {
+        const cx = w / 2, cy = h / 2;
+
+        // Rings
+        ctx.strokeStyle = 'rgba(74, 140, 255, 0.15)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, 100, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(155, 109, 255, 0.15)';
+        ctx.beginPath(); ctx.arc(cx, cy, 60, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Core
+        drawSphere(ctx, cx, cy, 28, colors.blue);
+
+        // Orbiting atoms
+        const orbitR = 100;
+        const atoms = [
+            { color: colors.red, speed: 1.2, offset: 0 },
+            { color: colors.green, speed: -0.8, offset: 2.1 },
+            { color: colors.purple, speed: 0.9, offset: 4.2 }
+        ];
+
+        atoms.forEach(a => {
+            const angle = t * a.speed + a.offset;
+            const ax = cx + Math.cos(angle) * orbitR;
+            const ay = cy + Math.sin(angle) * orbitR * 0.6; // elliptical
+            drawSphere(ctx, ax, ay, 14, a.color);
+        });
+
+        // Floating particles
+        for (let i = 0; i < 8; i++) {
+            const px = cx + Math.sin(t * 0.5 + i * 1.7) * 140;
+            const py = cy + Math.cos(t * 0.4 + i * 2.3) * 140;
+            ctx.beginPath();
+            ctx.arc(px, py, 3, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(74, 140, 255, ${0.15 + 0.1 * Math.sin(t + i)})`;
+            ctx.fill();
+        }
+    }
+
+    // ── SLIDE 1: Placing atoms — tap animation on mini grid ──
+
+    function drawSlide1(ctx, t, w, h) {
+        const cellSz = 100;
+        const gCols = 3, gRows = 3;
+        const ox = (w - gCols * cellSz) / 2;
+        const oy = (h - gRows * cellSz) / 2 - 20;
+
+        drawMiniGrid(ctx, ox, oy, gRows, gCols, cellSz);
+
+        // Cycle through placing atoms in different cells
+        const period = 2.5;
+        const cycle = t % (period * 4);
+        const placements = [
+            { r: 0, c: 0 }, { r: 1, c: 1 }, { r: 2, c: 2 }, { r: 0, c: 2 }
+        ];
+
+        const currentIdx = Math.floor(cycle / period);
+        const progress = (cycle % period) / period;
+
+        // Draw already-placed atoms (previous in cycle)
+        for (let i = 0; i < currentIdx; i++) {
+            const p = placements[i];
+            const px = ox + p.c * cellSz + cellSz / 2;
+            const py = oy + p.r * cellSz + cellSz / 2;
+            drawSphere(ctx, px, py, 20, colors.red);
+        }
+
+        // Animate current placement
+        if (currentIdx < placements.length) {
+            const p = placements[currentIdx];
+            const px = ox + p.c * cellSz + cellSz / 2;
+            const py = oy + p.r * cellSz + cellSz / 2;
+
+            if (progress < 0.3) {
+                // Tap indicator ring
+                const ring = progress / 0.3;
+                ctx.beginPath();
+                ctx.arc(px, py, 30 * ring, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(242, 92, 92, ${0.5 * (1 - ring)})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            } else {
+                // Atom appears with scale bounce
+                const p2 = Math.min(1, (progress - 0.3) / 0.3);
+                const scale = p2 < 1 ? 0.5 + 0.5 * (1 - Math.pow(1 - p2, 3)) : 1;
+                drawSphere(ctx, px, py, 20 * scale, colors.red);
+            }
+        }
+
+        // Cursor hand icon
+        if (currentIdx < placements.length) {
+            const p = placements[currentIdx];
+            const px = ox + p.c * cellSz + cellSz / 2 + 15;
+            const py = oy + p.r * cellSz + cellSz / 2 + 20;
+            const bounce = Math.sin(t * 4) * 3;
+            ctx.font = '32px sans-serif';
+            ctx.fillText('👆', px, py + bounce);
+        }
+    }
+
+    // ── SLIDE 2: Critical mass — numbers on grid cells ──
+
+    function drawSlide2(ctx, t, w, h) {
+        const cellSz = 110;
+        const gCols = 3, gRows = 3;
+        const ox = (w - gCols * cellSz) / 2;
+        const oy = (h - gRows * cellSz) / 2 - 20;
+
+        drawMiniGrid(ctx, ox, oy, gRows, gCols, cellSz);
+
+        // Critical mass values for 3x3 grid
+        const masses = [
+            [2, 3, 2],
+            [3, 4, 3],
+            [2, 3, 2]
+        ];
+
+        const labelColors = [
+            [colors.red, colors.yellow, colors.red],
+            [colors.yellow, colors.green, colors.yellow],
+            [colors.red, colors.yellow, colors.red]
+        ];
+
+        for (let r = 0; r < gRows; r++) {
+            for (let c = 0; c < gCols; c++) {
+                const cx = ox + c * cellSz + cellSz / 2;
+                const cy = oy + r * cellSz + cellSz / 2;
+                const mass = masses[r][c];
+                const col = labelColors[r][c];
+
+                // Pulse effect
+                const pulse = 0.9 + 0.1 * Math.sin(t * 2 + r * 1.5 + c);
+
+                // Draw atoms count representation
+                const atomR = 12 * pulse;
+                const spacing = 16;
+
+                if (mass === 2) {
+                    drawSphere(ctx, cx - spacing * 0.5, cy - 10, atomR, col);
+                    drawSphere(ctx, cx + spacing * 0.5, cy - 10, atomR, col);
+                } else if (mass === 3) {
+                    drawSphere(ctx, cx - spacing, cy - 10, atomR, col);
+                    drawSphere(ctx, cx, cy - 10, atomR, col);
+                    drawSphere(ctx, cx + spacing, cy - 10, atomR, col);
+                } else {
+                    drawSphere(ctx, cx - spacing, cy - 18, atomR * 0.9, col);
+                    drawSphere(ctx, cx + spacing, cy - 18, atomR * 0.9, col);
+                    drawSphere(ctx, cx - spacing, cy + 2, atomR * 0.9, col);
+                    drawSphere(ctx, cx + spacing, cy + 2, atomR * 0.9, col);
+                }
+
+                // Number label
+                ctx.font = 'bold 22px Nunito, sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`max ${mass}`, cx, cy + 32);
+            }
+        }
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
+
+        // Legend at bottom
+        ctx.font = 'bold 17px Nunito, sans-serif';
+        ctx.fillStyle = colors.red;
+        ctx.textAlign = 'center';
+        ctx.fillText('🔴 Corner = 2', w / 2 - 130, oy + gRows * cellSz + 40);
+        ctx.fillStyle = colors.yellow;
+        ctx.fillText('🟡 Edge = 3', w / 2, oy + gRows * cellSz + 40);
+        ctx.fillStyle = colors.green;
+        ctx.fillText('🟢 Center = 4', w / 2 + 140, oy + gRows * cellSz + 40);
+        ctx.textAlign = 'start';
+    }
+
+    // ── SLIDE 3: Chain reactions — explosion cascade ──
+
+    function drawSlide3(ctx, t, w, h) {
+        const cellSz = 100;
+        const gCols = 3, gRows = 3;
+        const ox = (w - gCols * cellSz) / 2;
+        const oy = (h - gRows * cellSz) / 2 - 10;
+
+        drawMiniGrid(ctx, ox, oy, gRows, gCols, cellSz);
+
+        // Animated chain reaction scenario
+        // Phase 0-2s: Fill center cell with red (1→2→3→4)
+        // Phase 2-2.5s: Explosion from center
+        // Phase 2.5-3.5s: Neighbors fill, neighbor explodes
+        // Phase 3.5-5s: Cascade effect, then reset
+
+        const loopT = t % 6;
+
+        // Cell state
+        const cells = Array.from({ length: 3 }, () =>
+            Array.from({ length: 3 }, () => ({ count: 0, color: null }))
+        );
+
+        // Setup some blue atoms
+        cells[0][0] = { count: 1, color: colors.blue };
+        cells[0][2] = { count: 1, color: colors.blue };
+        cells[2][0] = { count: 1, color: colors.blue };
+
+        let explosions = []; // {x, y, progress, color}
+
+        if (loopT < 0.5) {
+            cells[1][1] = { count: 1, color: colors.red };
+        } else if (loopT < 1.0) {
+            cells[1][1] = { count: 2, color: colors.red };
+        } else if (loopT < 1.5) {
+            cells[1][1] = { count: 3, color: colors.red };
+        } else if (loopT < 2.0) {
+            // About to burst — jitter
+            cells[1][1] = { count: 4, color: colors.red };
+        } else if (loopT < 2.8) {
+            // Exploding! Center empties, atoms fly to neighbors
+            const prog = (loopT - 2.0) / 0.8;
+            const cx1 = ox + 1 * cellSz + cellSz / 2;
+            const cy1 = oy + 1 * cellSz + cellSz / 2;
+            explosions.push({ x: cx1, y: cy1, progress: prog, color: colors.red });
+
+            // Projectile atoms flying outward
+            const neighbors = [[0, 1], [2, 1], [1, 0], [1, 2]];
+            neighbors.forEach(([nr, nc]) => {
+                const tx = ox + nc * cellSz + cellSz / 2;
+                const ty = oy + nr * cellSz + cellSz / 2;
+                const px = cx1 + (tx - cx1) * prog;
+                const py = cy1 + (ty - cy1) * prog;
+                drawSphere(ctx, px, py, 14, colors.red);
+            });
+        } else if (loopT < 4.0) {
+            // Aftermath: neighbors have red atoms, some converted
+            cells[0][1] = { count: 1, color: colors.red };
+            cells[2][1] = { count: 1, color: colors.red };
+            cells[1][0] = { count: 1, color: colors.red };
+            cells[1][2] = { count: 1, color: colors.red };
+
+            // Flash "converted" text
+            if (loopT < 3.3) {
+                const a = 0.5 + 0.5 * Math.sin(loopT * 8);
+                ctx.font = 'bold 20px Nunito, sans-serif';
+                ctx.fillStyle = `rgba(242, 92, 92, ${a})`;
+                ctx.textAlign = 'center';
+                ctx.fillText('💥 BOOM!', w / 2, oy - 15);
+                ctx.textAlign = 'start';
+            }
+        } else {
+            // Show final state — red dominates
+            cells[0][0] = { count: 1, color: colors.red };
+            cells[0][1] = { count: 1, color: colors.red };
+            cells[0][2] = { count: 1, color: colors.red };
+            cells[1][0] = { count: 1, color: colors.red };
+            cells[1][2] = { count: 1, color: colors.red };
+            cells[2][0] = { count: 1, color: colors.red };
+            cells[2][1] = { count: 1, color: colors.red };
+
+            ctx.font = 'bold 18px Nunito, sans-serif';
+            ctx.fillStyle = 'rgba(242, 92, 92, 0.8)';
+            ctx.textAlign = 'center';
+            ctx.fillText('All converted to Red! 🔴', w / 2, oy - 15);
+            ctx.textAlign = 'start';
+        }
+
+        // Render cells
+        for (let r = 0; r < gRows; r++) {
+            for (let c = 0; c < gCols; c++) {
+                const cell = cells[r][c];
+                if (cell.count === 0) continue;
+                const cx2 = ox + c * cellSz + cellSz / 2;
+                const cy2 = oy + r * cellSz + cellSz / 2;
+                const jitter = cell.count >= 4 ? Math.sin(t * 15) * 3 : 0;
+
+                for (let a = 0; a < Math.min(cell.count, 3); a++) {
+                    const offx = (a - (Math.min(cell.count, 3) - 1) * 0.5) * 14;
+                    drawSphere(ctx, cx2 + offx + jitter, cy2 + jitter, 14, cell.color);
+                }
+            }
+        }
+
+        // Render explosion effects
+        explosions.forEach(e => {
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, 40 * e.progress, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(242, 92, 92, ${0.3 * (1 - e.progress)})`;
+            ctx.fill();
+        });
+    }
+
+    // ── SLIDE 4: Win the game — board domination ──
+
+    function drawSlide4(ctx, t, w, h) {
+        const cellSz = 55;
+        const gCols = 6, gRows = 5;
+        const ox = (w - gCols * cellSz) / 2;
+        const oy = (h - gRows * cellSz) / 2 - 20;
+
+        drawMiniGrid(ctx, ox, oy, gRows, gCols, cellSz);
+
+        // Gradually fill the board with red, removing blue
+        const totalCells = gCols * gRows;
+        const loopDuration = 5;
+        const loopT = t % loopDuration;
+        const fillProgress = loopT / loopDuration;
+        const redCount = Math.floor(fillProgress * totalCells);
+
+        let cellIdx = 0;
+        for (let r = 0; r < gRows; r++) {
+            for (let c = 0; c < gCols; c++) {
+                const cx = ox + c * cellSz + cellSz / 2;
+                const cy = oy + r * cellSz + cellSz / 2;
+
+                if (cellIdx < redCount) {
+                    // Red atom
+                    const scale = 0.8 + 0.2 * Math.sin(t * 2 + cellIdx * 0.5);
+                    drawSphere(ctx, cx, cy, 10 * scale, colors.red);
+                } else if (cellIdx < redCount + 3 && cellIdx < totalCells) {
+                    // Blue atom about to be converted
+                    const flicker = 0.4 + 0.6 * Math.abs(Math.sin(t * 6));
+                    ctx.globalAlpha = flicker;
+                    drawSphere(ctx, cx, cy, 10, colors.blue);
+                    ctx.globalAlpha = 1;
+                }
+                cellIdx++;
+            }
+        }
+
+        // Victory text
+        if (fillProgress > 0.8) {
+            const a = Math.min(1, (fillProgress - 0.8) / 0.2);
+            ctx.font = 'bold 28px "Lilita One", sans-serif';
+            ctx.fillStyle = `rgba(242, 92, 92, ${a})`;
+            ctx.textAlign = 'center';
+            ctx.fillText('🏆 VICTORY!', w / 2, oy + gRows * cellSz + 50);
+            ctx.textAlign = 'start';
+        }
+
+        // Score display
+        ctx.font = 'bold 18px Nunito, sans-serif';
+        ctx.textAlign = 'center';
+        const blueLeft = Math.max(0, totalCells - redCount - 3);
+        ctx.fillStyle = colors.red;
+        ctx.fillText(`🔴 ${redCount}`, w / 2 - 60, oy - 15);
+        ctx.fillStyle = colors.blue;
+        ctx.fillText(`🔵 ${blueLeft}`, w / 2 + 60, oy - 15);
+        ctx.textAlign = 'start';
+    }
+
+})();
+

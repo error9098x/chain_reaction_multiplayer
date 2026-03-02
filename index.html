@@ -49,6 +49,16 @@
         <!-- ═══ HOME / MENU SCREEN ═══ -->
         <div id="main-menu" class="screen active home">
 
+            <!-- Info / How-to-Play button -->
+            <button id="guide-open-btn" class="guide-info-btn" title="How to Play">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                </svg>
+            </button>
+
             <!-- Hero -->
             <div class="hero">
                 <div class="orbital-badge" aria-hidden="true">
@@ -170,6 +180,48 @@
             </div>
         </div>
     </main>
+
+    <!-- ═══ GAME GUIDE OVERLAY ═══ -->
+    <div id="guide-overlay" class="guide-overlay hidden">
+        <div class="guide-container">
+            <!-- Top bar -->
+            <div class="guide-top-bar">
+                <button id="guide-close-btn" class="btn btn-white btn-sm">
+                    <span class="btn-content">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 12H5" />
+                            <path d="M12 19l-7-7 7-7" />
+                        </svg>
+                    </span>
+                </button>
+                <span class="guide-title">HOW TO PLAY</span>
+                <div style="width:38px;"></div>
+            </div>
+
+            <!-- Slide area -->
+            <div class="guide-slide-area">
+                <div class="guide-canvas-box">
+                    <canvas id="guide-canvas" width="560" height="560"></canvas>
+                </div>
+                <div class="guide-text-area">
+                    <h2 id="guide-slide-title" class="guide-slide-title"></h2>
+                    <p id="guide-slide-desc" class="guide-slide-desc"></p>
+                </div>
+            </div>
+
+            <!-- Bottom nav -->
+            <div class="guide-nav">
+                <button id="guide-prev-btn" class="btn btn-white btn-sm guide-nav-btn">
+                    <span class="btn-content">‹ PREV</span>
+                </button>
+                <div id="guide-dots" class="guide-dots"></div>
+                <button id="guide-next-btn" class="btn btn-blue btn-sm guide-nav-btn">
+                    <span class="btn-content">NEXT ›</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- ═══ WINNER MODAL ═══ -->
     <div class="modal-overlay hidden" id="winner-modal">
