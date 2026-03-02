@@ -820,7 +820,7 @@ canvas.addEventListener('click', (e) => {
         return;
     }
 
-    const cell = grid[row][col];
+    const cell = targetGrid ? targetGrid[row][col] : grid[row][col];
     if (cell.count === 0 || cell.color === cp.color) {
         socket.emit('placeAtom', { code: roomCode, row, col });
     } else {
