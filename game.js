@@ -879,7 +879,7 @@ canvas.addEventListener('click', (e) => {
         },
         {
             title: 'Critical Mass',
-            desc: 'Each cell has a limit: corners hold 2, edges hold 3, center cells hold 4. When a cell exceeds its limit, it explodes!',
+            desc: 'Each cell has a limit based on its neighbors: corners hold 1, edges hold 2, center cells hold 3. Add one more and it explodes!',
             draw: drawSlide2
         },
         {
@@ -1103,11 +1103,14 @@ canvas.addEventListener('click', (e) => {
 
         drawMiniGrid(ctx, ox, oy, gRows, gCols, cellSz);
 
-        // Critical mass values for 3x3 grid
-        const masses = [
+        // Max atoms before explosion (critical mass - 1)
+        // Corner: 2 neighbors → explodes at 2 → max 1
+        // Edge: 3 neighbors → explodes at 3 → max 2
+        // Center: 4 neighbors → explodes at 4 → max 3
+        const maxAtoms = [
+            [1, 2, 1],
             [2, 3, 2],
-            [3, 4, 3],
-            [2, 3, 2]
+            [1, 2, 1]
         ];
 
         const labelColors = [
@@ -1120,28 +1123,24 @@ canvas.addEventListener('click', (e) => {
             for (let c = 0; c < gCols; c++) {
                 const cx = ox + c * cellSz + cellSz / 2;
                 const cy = oy + r * cellSz + cellSz / 2;
-                const mass = masses[r][c];
+                const max = maxAtoms[r][c];
                 const col = labelColors[r][c];
 
                 // Pulse effect
                 const pulse = 0.9 + 0.1 * Math.sin(t * 2 + r * 1.5 + c);
-
-                // Draw atoms count representation
                 const atomR = 12 * pulse;
                 const spacing = 16;
 
-                if (mass === 2) {
+                // Draw the max number of atoms that fit
+                if (max === 1) {
+                    drawSphere(ctx, cx, cy - 10, atomR, col);
+                } else if (max === 2) {
                     drawSphere(ctx, cx - spacing * 0.5, cy - 10, atomR, col);
                     drawSphere(ctx, cx + spacing * 0.5, cy - 10, atomR, col);
-                } else if (mass === 3) {
+                } else {
                     drawSphere(ctx, cx - spacing, cy - 10, atomR, col);
                     drawSphere(ctx, cx, cy - 10, atomR, col);
                     drawSphere(ctx, cx + spacing, cy - 10, atomR, col);
-                } else {
-                    drawSphere(ctx, cx - spacing, cy - 18, atomR * 0.9, col);
-                    drawSphere(ctx, cx + spacing, cy - 18, atomR * 0.9, col);
-                    drawSphere(ctx, cx - spacing, cy + 2, atomR * 0.9, col);
-                    drawSphere(ctx, cx + spacing, cy + 2, atomR * 0.9, col);
                 }
 
                 // Number label
@@ -1149,7 +1148,7 @@ canvas.addEventListener('click', (e) => {
                 ctx.fillStyle = 'rgba(255,255,255,0.7)';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(`max ${mass}`, cx, cy + 32);
+                ctx.fillText(`max ${max}`, cx, cy + 32);
             }
         }
         ctx.textAlign = 'start';
@@ -1159,11 +1158,11 @@ canvas.addEventListener('click', (e) => {
         ctx.font = 'bold 17px Nunito, sans-serif';
         ctx.fillStyle = colors.red;
         ctx.textAlign = 'center';
-        ctx.fillText('🔴 Corner = 2', w / 2 - 130, oy + gRows * cellSz + 40);
+        ctx.fillText('🔴 Corner = 1', w / 2 - 130, oy + gRows * cellSz + 40);
         ctx.fillStyle = colors.yellow;
-        ctx.fillText('🟡 Edge = 3', w / 2, oy + gRows * cellSz + 40);
+        ctx.fillText('🟡 Edge = 2', w / 2, oy + gRows * cellSz + 40);
         ctx.fillStyle = colors.green;
-        ctx.fillText('🟢 Center = 4', w / 2 + 140, oy + gRows * cellSz + 40);
+        ctx.fillText('🟢 Center = 3', w / 2 + 140, oy + gRows * cellSz + 40);
         ctx.textAlign = 'start';
     }
 
@@ -1177,81 +1176,121 @@ canvas.addEventListener('click', (e) => {
 
         drawMiniGrid(ctx, ox, oy, gRows, gCols, cellSz);
 
-        // Animated chain reaction scenario
-        // Phase 0-2s: Fill center cell with red (1→2→3→4)
-        // Phase 2-2.5s: Explosion from center
-        // Phase 2.5-3.5s: Neighbors fill, neighbor explodes
-        // Phase 3.5-5s: Cascade effect, then reset
+        // Animated chain reaction showing COLOR CONVERSION
+        // Setup: Blue atoms on edges/corners, Red builds up in center
+        // Phase 0-1s: Board with blue atoms + 1 red in center
+        // Phase 1-1.8s: Red atom count in center goes to 3 (about to burst)
+        // Phase 1.8-2.2s: Center reaches critical mass (4) — jitters
+        // Phase 2.2-3s: Explosion! Red atoms fly to neighbors
+        // Phase 3-4.5s: Blue atoms CONVERTED to red on arrival
+        // Phase 4.5-6s: Show final converted board, then reset
 
-        const loopT = t % 6;
+        const loopT = t % 7;
 
-        // Cell state
+        // Cell state: {count, color}
         const cells = Array.from({ length: 3 }, () =>
             Array.from({ length: 3 }, () => ({ count: 0, color: null }))
         );
 
-        // Setup some blue atoms
-        cells[0][0] = { count: 1, color: colors.blue };
-        cells[0][2] = { count: 1, color: colors.blue };
-        cells[2][0] = { count: 1, color: colors.blue };
+        let explosions = [];
+        let flyingAtoms = [];
 
-        let explosions = []; // {x, y, progress, color}
+        // Blue atoms on all 4 edge neighbors of center
+        const bluePositions = [[0, 1], [1, 0], [1, 2], [2, 1]];
 
-        if (loopT < 0.5) {
+        if (loopT < 1.0) {
+            // Initial state: blue on edges, 1 red in center
+            bluePositions.forEach(([r, c]) => { cells[r][c] = { count: 1, color: colors.blue }; });
             cells[1][1] = { count: 1, color: colors.red };
-        } else if (loopT < 1.0) {
+        } else if (loopT < 1.4) {
+            // Add 2nd red atom
+            bluePositions.forEach(([r, c]) => { cells[r][c] = { count: 1, color: colors.blue }; });
             cells[1][1] = { count: 2, color: colors.red };
-        } else if (loopT < 1.5) {
+        } else if (loopT < 1.8) {
+            // Add 3rd red atom
+            bluePositions.forEach(([r, c]) => { cells[r][c] = { count: 1, color: colors.blue }; });
             cells[1][1] = { count: 3, color: colors.red };
-        } else if (loopT < 2.0) {
-            // About to burst — jitter
+        } else if (loopT < 2.2) {
+            // 4th atom — at critical mass! Jitters violently
+            bluePositions.forEach(([r, c]) => { cells[r][c] = { count: 1, color: colors.blue }; });
             cells[1][1] = { count: 4, color: colors.red };
-        } else if (loopT < 2.8) {
-            // Exploding! Center empties, atoms fly to neighbors
-            const prog = (loopT - 2.0) / 0.8;
+
+            // Warning text
+            const a = 0.5 + 0.5 * Math.sin(loopT * 10);
+            ctx.font = 'bold 18px Nunito, sans-serif';
+            ctx.fillStyle = `rgba(255, 198, 62, ${a})`;
+            ctx.textAlign = 'center';
+            ctx.fillText('⚠️ Critical Mass!', w / 2, oy - 15);
+            ctx.textAlign = 'start';
+        } else if (loopT < 3.0) {
+            // EXPLOSION: center empties, atoms fly to blue neighbors
+            const prog = (loopT - 2.2) / 0.8;
             const cx1 = ox + 1 * cellSz + cellSz / 2;
             const cy1 = oy + 1 * cellSz + cellSz / 2;
-            explosions.push({ x: cx1, y: cy1, progress: prog, color: colors.red });
 
-            // Projectile atoms flying outward
-            const neighbors = [[0, 1], [2, 1], [1, 0], [1, 2]];
-            neighbors.forEach(([nr, nc]) => {
+            // Explosion ring from center
+            explosions.push({ x: cx1, y: cy1, progress: prog });
+
+            // Blue atoms still visible but about to be converted
+            bluePositions.forEach(([r, c]) => {
+                // Fade blue as prog increases — being overtaken
+                const bx = ox + c * cellSz + cellSz / 2;
+                const by = oy + r * cellSz + cellSz / 2;
+                ctx.globalAlpha = Math.max(0, 1 - prog);
+                drawSphere(ctx, bx, by, 14, colors.blue);
+                ctx.globalAlpha = 1;
+            });
+
+            // Red projectiles flying outward to neighbors
+            bluePositions.forEach(([nr, nc]) => {
                 const tx = ox + nc * cellSz + cellSz / 2;
                 const ty = oy + nr * cellSz + cellSz / 2;
                 const px = cx1 + (tx - cx1) * prog;
                 const py = cy1 + (ty - cy1) * prog;
                 drawSphere(ctx, px, py, 14, colors.red);
             });
-        } else if (loopT < 4.0) {
-            // Aftermath: neighbors have red atoms, some converted
-            cells[0][1] = { count: 1, color: colors.red };
-            cells[2][1] = { count: 1, color: colors.red };
-            cells[1][0] = { count: 1, color: colors.red };
-            cells[1][2] = { count: 1, color: colors.red };
 
-            // Flash "converted" text
-            if (loopT < 3.3) {
-                const a = 0.5 + 0.5 * Math.sin(loopT * 8);
-                ctx.font = 'bold 20px Nunito, sans-serif';
-                ctx.fillStyle = `rgba(242, 92, 92, ${a})`;
-                ctx.textAlign = 'center';
-                ctx.fillText('💥 BOOM!', w / 2, oy - 15);
-                ctx.textAlign = 'start';
+            // BOOM text
+            const a = 1 - prog;
+            ctx.font = 'bold 22px Nunito, sans-serif';
+            ctx.fillStyle = `rgba(242, 92, 92, ${a})`;
+            ctx.textAlign = 'center';
+            ctx.fillText('💥 BOOM!', w / 2, oy - 15);
+            ctx.textAlign = 'start';
+        } else if (loopT < 4.5) {
+            // Aftermath: all neighbors converted from BLUE → RED
+            bluePositions.forEach(([r, c]) => {
+                cells[r][c] = { count: 2, color: colors.red }; // 1 existing + 1 from explosion
+            });
+
+            // Color transition flash effect
+            if (loopT < 3.6) {
+                const flash = 0.3 * (1 - (loopT - 3.0) / 0.6);
+                bluePositions.forEach(([r, c]) => {
+                    const fx = ox + c * cellSz + cellSz / 2;
+                    const fy = oy + r * cellSz + cellSz / 2;
+                    ctx.beginPath();
+                    ctx.arc(fx, fy, 30, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(242, 92, 92, ${flash})`;
+                    ctx.fill();
+                });
             }
+
+            ctx.font = 'bold 18px Nunito, sans-serif';
+            ctx.fillStyle = 'rgba(242, 92, 92, 0.9)';
+            ctx.textAlign = 'center';
+            ctx.fillText('🔵→🔴 Converted!', w / 2, oy - 15);
+            ctx.textAlign = 'start';
         } else {
-            // Show final state — red dominates
-            cells[0][0] = { count: 1, color: colors.red };
-            cells[0][1] = { count: 1, color: colors.red };
-            cells[0][2] = { count: 1, color: colors.red };
-            cells[1][0] = { count: 1, color: colors.red };
-            cells[1][2] = { count: 1, color: colors.red };
-            cells[2][0] = { count: 1, color: colors.red };
-            cells[2][1] = { count: 1, color: colors.red };
+            // Final state: everything is red now
+            bluePositions.forEach(([r, c]) => {
+                cells[r][c] = { count: 2, color: colors.red };
+            });
 
             ctx.font = 'bold 18px Nunito, sans-serif';
             ctx.fillStyle = 'rgba(242, 92, 92, 0.8)';
             ctx.textAlign = 'center';
-            ctx.fillText('All converted to Red! 🔴', w / 2, oy - 15);
+            ctx.fillText('All blue atoms are now red! 🔴', w / 2, oy - 15);
             ctx.textAlign = 'start';
         }
 
@@ -1271,12 +1310,13 @@ canvas.addEventListener('click', (e) => {
             }
         }
 
-        // Render explosion effects
+        // Render explosion ring effects
         explosions.forEach(e => {
             ctx.beginPath();
-            ctx.arc(e.x, e.y, 40 * e.progress, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(242, 92, 92, ${0.3 * (1 - e.progress)})`;
-            ctx.fill();
+            ctx.arc(e.x, e.y, 50 * e.progress, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(242, 92, 92, ${0.5 * (1 - e.progress)})`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
         });
     }
 

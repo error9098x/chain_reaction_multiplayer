@@ -1146,6 +1146,13 @@ canvas {
     transform: scale(0.92);
 }
 
+/* Override .home > * entrance animation for absolutely-positioned info btn */
+.home>.guide-info-btn {
+    opacity: 1;
+    transform: none;
+    animation: guide-btn-pulse 3s ease-in-out infinite;
+}
+
 @keyframes guide-btn-pulse {
 
     0%,
