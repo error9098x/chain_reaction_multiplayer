@@ -221,7 +221,8 @@ io.on('connection', (socket) => {
         // Validate it's this player's turn
         const currentPlayer = room.players[room.turnIndex];
         if (!currentPlayer || currentPlayer.id !== socket.id) {
-            // Not your turn — silently ignore (could be latency)
+            // Not your turn — send feedback so client can self-correct
+            socket.emit('turnSynced', { turnIndex: room.turnIndex });
             return;
         }
 
@@ -242,6 +243,9 @@ io.on('connection', (socket) => {
         if (room.host !== socket.id) return;
 
         room.turnIndex = newTurnIndex;
+
+        // Broadcast to ALL clients so non-host stays in sync
+        io.to(code).emit('turnSynced', { turnIndex: newTurnIndex });
     });
 
     // ─── GAME OVER (host reports winner) ───

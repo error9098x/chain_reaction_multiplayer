@@ -305,6 +305,20 @@ socket.on('atomPlaced', ({ row, col, playerIndex }) => {
     addAtomAt(row, col, player.color, false);
 });
 
+// ─── TURN SYNCED (server broadcasts authoritative turn index) ───
+socket.on('turnSynced', ({ turnIndex }) => {
+    if (!gameActive) return;
+    if (turnIndex !== currentPlayerIndex) {
+        currentPlayerIndex = turnIndex;
+        statsDirty = true;
+        // Ensure render loop is running to update the HUD
+        if (!isRendering) {
+            isRendering = true;
+            requestAnimationFrame(render);
+        }
+    }
+});
+
 // ═══════════════════════════════════════════════════════════
 // GAME OVER — Server-driven winner notification
 // ═══════════════════════════════════════════════════════════
