@@ -117,6 +117,7 @@ let animationFrame = 0;
 let pendingServerEvents = [];
 let targetGrid = null;
 let targetTurnIndex = 0;
+let turnCount = 0;
 let winner = null;
 let gameActive = false;
 let audioContext;
@@ -301,13 +302,14 @@ socket.on('matchStarted', ({ players, turnIndex }) => {
 });
 
 // ─── GAME STATE UPDATE (Server-Authoritative) ───
-socket.on('gameStateUpdate', ({ events, grid: serverGrid, turnIndex }) => {
+socket.on('gameStateUpdate', ({ events, grid: serverGrid, turnIndex, turnCount: serverTurnCount }) => {
     if (!gameActive) return;
 
     if (!events || events.length === 0) {
         // Just a sync correction (e.g. invalid move or out of turn)
         grid = serverGrid;
         currentPlayerIndex = turnIndex;
+        if (serverTurnCount !== undefined) turnCount = serverTurnCount;
         statsDirty = true;
         if (!isRendering) { isRendering = true; requestAnimationFrame(render); }
         return;
@@ -316,6 +318,7 @@ socket.on('gameStateUpdate', ({ events, grid: serverGrid, turnIndex }) => {
     pendingServerEvents = pendingServerEvents.concat(events);
     targetGrid = serverGrid;
     targetTurnIndex = turnIndex;
+    if (serverTurnCount !== undefined) turnCount = serverTurnCount;
 
     if (!isRendering) {
         isRendering = true;
@@ -622,7 +625,7 @@ function updateHudStats() {
         scoreBar.innerHTML = '';
         enabledPlayers.forEach(p => {
             const c = counts[p.color] || 0;
-            const isEliminated = false; // Elimination styling logic removed for now to simplify, could be re-added via server flag
+            const isEliminated = (turnCount >= enabledPlayers.length && c === 0) || p.offline;
             const isMyTurn = (enabledPlayers[currentPlayerIndex]?.id === p.id);
             const playerColor = themeColors[p.color] || '#fff';
 

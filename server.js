@@ -363,6 +363,7 @@ io.on('connection', (socket) => {
             events,
             grid: room.grid,
             turnIndex: room.turnIndex,
+            turnCount: room.turnCount,
             winnerId: room.winnerId
         });
 
@@ -377,27 +378,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ─── GAME OVER (host reports winner) ───
-    socket.on('gameOver', ({ code, winnerId }) => {
-        const room = rooms[code];
-        if (!room) return;
-        if (room.state !== 'playing') return;
-        if (room.host !== socket.id) return;
-
-        room.state = 'finished';
-        room.winnerId = winnerId;
-        room.rematchVotes = new Set();
-
-        const winnerPlayer = room.players.find(p => p.id === winnerId);
-        const winnerName = winnerPlayer ? winnerPlayer.name : 'Unknown';
-
-        // Notify ALL players about the winner simultaneously
-        io.to(code).emit('matchEnded', {
-            winnerId,
-            winnerName,
-            winnerColor: winnerPlayer ? winnerPlayer.color : 'blue'
-        });
-    });
+    // ─── REMATCH MECHANICS ───
 
     // ─── REMATCH VOTE ───
     socket.on('rematchVote', (code) => {
