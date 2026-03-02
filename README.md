@@ -1,93 +1,114 @@
-# Electron Hello World with Custom Navbar
+# ⚛️ Chain Reaction — Multiplayer
 
-A beautiful Hello World Electron application featuring a custom navbar with modern UI design.
+A real-time multiplayer Chain Reaction browser game with a modern cartoony UI, built with Socket.IO and vanilla JS.
 
-## Features
+> Inspired by the aesthetics of Paper.io 2, Hole.io, and Agar.io — colorful, premium, and inviting.
 
-- 🎨 **Custom Navbar**: Frameless window with custom title bar and window controls
-- ⚡ **Modern UI**: Beautiful gradient design with glassmorphism effects
-- 🔒 **Secure**: Implements Electron security best practices with context isolation
-- 📱 **Responsive**: Adaptive design that works on different screen sizes
-- ⌨️ **Keyboard Shortcuts**: 
-  - `Ctrl/Cmd + W` - Close window
-  - `F11` - Toggle maximize/restore
-- 🎭 **Interactive**: Smooth animations and hover effects
+![Chain Reaction](chain_reaction.png)
 
-## Installation
+---
 
-1. Make sure you have Node.js installed
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+## 🎮 How to Play
 
-## Usage
+1. **Host or Join** — Create a room and share the 4-letter code, or join with a friend's code.
+2. **Place Atoms** — Tap on empty cells or cells you own to place an atom.
+3. **Chain Reactions** — When a cell reaches critical mass, it explodes outward, converting neighbors.
+4. **Last One Standing** — After opening turns, players with zero atoms are eliminated. The last survivor wins.
 
-### Development Mode
+### Critical Mass Rules
+
+| Cell Position | Bursts At |
+|---|---|
+| Corner | 2 atoms |
+| Edge | 3 atoms |
+| Center | 4 atoms |
+
+---
+
+## 🚀 Quick Start
+
 ```bash
-npm run dev
-```
-This will start the application with developer tools enabled.
+# Install dependencies
+npm install
 
-### Production Mode
-```bash
+# Start the server
 npm start
-```
-This will start the application in production mode.
 
-## Project Structure
-
-```
-Chain Reaction/
-├── main.js          # Main Electron process
-├── preload.js       # Preload script for secure IPC
-├── index.html       # Main HTML file
-├── styles.css       # CSS styling
-├── renderer.js      # Frontend JavaScript
-├── package.json     # Project configuration
-└── README.md        # This file
+# Open in browser
+open http://localhost:4173
 ```
 
-## Architecture
+Open **two browser tabs** to test multiplayer locally. You can override the port:
 
-- **Main Process** (`main.js`): Creates and manages the application window
-- **Preload Script** (`preload.js`): Safely exposes IPC methods to the renderer
-- **Renderer Process** (`renderer.js`): Handles UI interactions and window controls
-- **Security**: Uses context isolation and disabled node integration for security
+```bash
+PORT=8080 npm start
+```
 
-## Window Controls
+---
 
-The custom navbar includes three window control buttons:
-- **Minimize**: Minimizes the window to taskbar
-- **Maximize/Restore**: Toggles between maximized and restored states
-- **Close**: Closes the application
+## 🏗️ Architecture
 
-## Customization
+### Project Structure
 
-You can easily customize the appearance by modifying:
-- `styles.css` - Change colors, fonts, and layout
-- `index.html` - Modify content and structure
-- `renderer.js` - Add new interactive features
+```
+├── index.html      # UI: Home screen, lobby, game, winner modal
+├── styles.css      # Design system: tokens, 3D buttons, grid bg, toasts
+├── game.js         # Client: rendering, game logic, socket events, audio
+├── server.js       # Server: Socket.IO, room FSM, validation, rematch flow
+├── main.js         # Electron main process (optional desktop mode)
+├── preload.js      # Electron preload bridge
+├── renderer.js     # Electron window controls
+└── Dockerfile      # Container deployment
+```
 
-## Technologies Used
+### Server-Side State Machine
 
-- Electron 28.0.0
-- HTML5 & CSS3
-- JavaScript (ES6+)
-- CSS Grid & Flexbox
-- CSS Backdrop Filter for glassmorphism effects
+```
+[lobby] ──startMatch──▶ [playing] ──gameOver──▶ [finished]
+   ▲                                                │
+   └──────────── all players vote rematch ◀─────────┘
+```
 
-## Browser Compatibility
+- **lobby**: Players join, pick colors/names. Host starts when ≥2 players.
+- **playing**: Turn-based gameplay. Server validates turn ownership on every move.
+- **finished**: Winner broadcast to all. Cooperative rematch voting (both must agree).
 
-This application runs in Electron's Chromium environment and uses modern web technologies including:
-- CSS Grid
-- CSS Flexbox
-- CSS Backdrop Filter
-- ES6+ JavaScript features
+### Multiplayer Edge Cases Handled
 
-Enjoy your Electron Hello World application! 🚀
-# chain_reaction_multiplayer
-# chain_reaction_multiplayer
-# chain_reaction_multiplayer
-# chain_reaction_multiplayer
-# chain_reaction_multiplayer
+| Scenario | Behavior |
+|---|---|
+| Same color picked | Server rejects with list of available colors |
+| Same name in room | Auto-renamed to `Name(2)`, `Name(3)`, etc. |
+| Empty name | Rejected with error toast |
+| Wrong player clicks | Server silently ignores; client shows toast |
+| Player disconnects mid-game | Marked offline, skipped in turns. Auto-win if only 1 remains |
+| Player exits after game | "Player left" toast shown to remaining players |
+| Rematch | Both players must click Rematch; shows "Waiting (1/2)" until agreed |
+| Player leaves during rematch wait | Remaining player notified, vote recalculated |
+
+---
+
+## 🎨 Design System
+
+- **Fonts**: Nunito (body, 600-900 weight) + Lilita One (display headings)
+- **Colors**: 6 player colors with depth/light variants, cool-tinted surfaces
+- **Buttons**: 3D raised tactile system with `::before` depth + `::after` gloss + `:active` push
+- **Background**: Agar.io-style grid + soft color washes + 14 ambient floating orbs
+- **Cards**: White, 20px radius, multi-layered shadows, optional gradient accent bar
+- **Animations**: Bouncy spring easing (`cubic-bezier(0.34, 1.56, 0.64, 1)`), all under 400ms
+- **Audio**: Synthesized button pops, atom placement, explosion, and win sounds (Web Audio API)
+
+---
+
+## 🐳 Docker
+
+```bash
+docker build -t chain-reaction .
+docker run -p 4173:4173 chain-reaction
+```
+
+---
+
+## 📜 License
+
+MIT

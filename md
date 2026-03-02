@@ -1,0 +1,1 @@
+dsfgI dont like glow vibes , I want cartoony vibes colourful like agar io , the buttons with nice double textured buttons , and colours and the background with grid white and black lines (opacity tweaked ) and then some nice animation like chain reaction keeps on happening but also don't looks to intrusive

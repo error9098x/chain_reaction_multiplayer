@@ -1,15 +1,18 @@
 {
   "name": "chain-reaction-game",
   "version": "1.0.0",
-  "description": "A Chain Reaction Game",
-  "main": "main.js",
+  "description": "Browser-based Chain Reaction multiplayer game",
+  "main": "server.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
+    "start": "node server.js",
+    "dev": "node server.js",
+    "desktop": "electron .",
     "build": "electron-builder"
   },
   "keywords": [
-    "electron",
+    "browser-game",
+    "multiplayer",
+    "strategy",
     "chain-reaction-game"
   ],
   "author": "Aviral",
@@ -17,5 +20,9 @@
   "devDependencies": {
     "electron": "^28.0.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  }
 }

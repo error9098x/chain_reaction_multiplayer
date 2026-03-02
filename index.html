@@ -1,90 +1,198 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chain Reaction</title>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Chain Reaction — Multiplayer</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
-    <div class="titlebar" id="titlebar">
-        <div class="titlebar-drag-region">
-            <div class="window-title">
-                <img src="logo.icns" alt="Chain Reaction" class="app-icon">
-                <span>Chain Reaction</span>
-            </div>
-        </div>
-        <div class="window-controls">
-            <button class="window-control" id="minimize-btn" title="Minimize">
-                <svg width="12" height="12" viewBox="0 0 12 12">
-                    <rect x="0" y="5" width="12" height="2" fill="currentColor"/>
-                </svg>
-            </button>
-            <button class="window-control" id="maximize-btn" title="Maximize">
-                <svg width="12" height="12" viewBox="0 0 12 12">
-                    <rect x="0" y="0" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
-                </svg>
-            </button>
-            <button class="window-control close" id="close-btn" title="Close">
-                <svg width="12" height="12" viewBox="0 0 12 12">
-                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-            </button>
-        </div>
+    <!-- LAYER 4 — Ambient floating orbs -->
+    <div class="bg-orbs" aria-hidden="true">
+        <div class="bg-orb"
+            style="width:20px;height:20px;background:#f25c5c;top:8%;left:12%;--dx:40px;--dy:-30px;--i:0;"></div>
+        <div class="bg-orb"
+            style="width:28px;height:28px;background:#4a8cff;top:15%;left:72%;--dx:-35px;--dy:25px;--i:1;"></div>
+        <div class="bg-orb"
+            style="width:16px;height:16px;background:#3cc88c;top:32%;left:90%;--dx:20px;--dy:-40px;--i:2;"></div>
+        <div class="bg-orb"
+            style="width:24px;height:24px;background:#9b6dff;top:45%;left:5%;--dx:30px;--dy:20px;--i:3;"></div>
+        <div class="bg-orb"
+            style="width:32px;height:32px;background:#ffc63e;top:55%;left:60%;--dx:-25px;--dy:-35px;--i:4;"></div>
+        <div class="bg-orb"
+            style="width:18px;height:18px;background:#ff8a50;top:70%;left:25%;--dx:45px;--dy:15px;--i:5;"></div>
+        <div class="bg-orb"
+            style="width:22px;height:22px;background:#4a8cff;top:20%;left:40%;--dx:-20px;--dy:30px;--i:6;"></div>
+        <div class="bg-orb"
+            style="width:14px;height:14px;background:#f25c5c;top:80%;left:80%;--dx:15px;--dy:-25px;--i:7;"></div>
+        <div class="bg-orb"
+            style="width:26px;height:26px;background:#3cc88c;top:90%;left:45%;--dx:-30px;--dy:20px;--i:8;"></div>
+        <div class="bg-orb"
+            style="width:30px;height:30px;background:#9b6dff;top:5%;left:55%;--dx:25px;--dy:35px;--i:9;"></div>
+        <div class="bg-orb"
+            style="width:15px;height:15px;background:#ffc63e;top:65%;left:4%;--dx:-15px;--dy:-20px;--i:10;"></div>
+        <div class="bg-orb"
+            style="width:36px;height:36px;background:#ff8a50;top:38%;left:50%;--dx:35px;--dy:-15px;--i:11;"></div>
+        <div class="bg-orb"
+            style="width:19px;height:19px;background:#4a8cff;top:85%;left:15%;--dx:-40px;--dy:30px;--i:12;"></div>
+        <div class="bg-orb"
+            style="width:21px;height:21px;background:#f25c5c;top:50%;left:95%;--dx:20px;--dy:-10px;--i:13;"></div>
     </div>
 
-    <main class="container">
-        <div class="ambient-glow glow-a"></div>
-        <div class="ambient-glow glow-b"></div>
+    <!-- Toast notifications -->
+    <div id="toast-container" class="toast-container"></div>
 
-        <section class="menu-screen" id="main-menu">
-            <p class="menu-kicker">ARENA MODE</p>
-            <h1 class="menu-title">Chain Reaction</h1>
-            <p class="menu-subtitle">Capture the board through cascading explosions.</p>
+    <main class="app-shell">
+        <!-- ═══ HOME / MENU SCREEN ═══ -->
+        <div id="main-menu" class="screen active home">
 
-            <div class="menu-panel">
-                <div class="menu-row">
-                    <label for="player-count">Players</label>
-                    <select id="player-count">
-                        <option value="2" selected>2 Players</option>
-                        <option value="3">3 Players</option>
-                        <option value="4">4 Players</option>
-                        <option value="5">5 Players</option>
-                        <option value="6">6 Players</option>
+            <!-- Hero -->
+            <div class="hero">
+                <div class="orbital-badge" aria-hidden="true">
+                    <span class="ring ring-outer"></span>
+                    <span class="ring ring-inner"></span>
+                    <span class="orbit-dot dot-red"></span>
+                    <span class="orbit-dot dot-blue"></span>
+                    <span class="orbit-dot dot-green"></span>
+                    <span class="core-dot"></span>
+                </div>
+                <h1 class="logo">
+                    <span class="word-chain">CHAIN</span>
+                    <span class="word-reaction">REACTION</span>
+                </h1>
+                <div class="status-pill"><span class="pulse-dot"></span> ONLINE</div>
+            </div>
+
+            <!-- Auth Panel -->
+            <div class="card card-accent" id="auth-panel">
+                <div class="form-group">
+                    <label>PLAYER NAME</label>
+                    <input type="text" id="player-name" class="room-input" placeholder="Enter your name" maxlength="12"
+                        autocomplete="off" autocorrect="off" required>
+                </div>
+                <div class="form-group">
+                    <label>CHOOSE COLOR</label>
+                    <select id="player-color" class="room-input">
+                        <option value="red">Red</option>
+                        <option value="blue">Blue</option>
+                        <option value="green">Green</option>
+                        <option value="yellow">Yellow</option>
+                        <option value="purple">Purple</option>
+                        <option value="orange">Orange</option>
                     </select>
                 </div>
 
-                <div class="menu-row">
-                    <label for="starting-player">Starting Team</label>
-                    <select id="starting-player"></select>
-                </div>
-
-                <button id="start-game-btn" class="start-btn">Start Match</button>
-                <p class="menu-footnote">Critical mass depends on position: corners 2, edges 3, center 4.</p>
-            </div>
-        </section>
-
-        <section class="game-screen hidden" id="game-screen" aria-hidden="true">
-            <div class="hud-bar">
-                <div class="turn-indicator" id="turn-indicator">
-                    <span class="turn-label">Current Turn</span>
-                    <span class="turn-player" id="turn-player-name">Crimson</span>
-                </div>
-                <div class="hud-actions">
-                    <button id="new-game-btn" class="hud-btn">Restart</button>
-                    <button id="menu-btn" class="hud-btn">Main Menu</button>
+                <div class="home-actions">
+                    <button id="show-host-btn" class="btn btn-blue btn-lg btn-block">
+                        <span class="btn-content">HOST MATCH</span>
+                    </button>
+                    <button id="show-join-btn" class="btn btn-purple btn-lg btn-block btn-outline">
+                        <span class="btn-content">JOIN MATCH</span>
+                    </button>
                 </div>
             </div>
 
-            <div id="game-wrapper">
-                <canvas id="chain-canvas" width="720" height="480"></canvas>
+            <!-- Join Panel -->
+            <div class="card card-accent hidden" id="join-panel">
+                <div class="form-group">
+                    <label>ROOM CODE</label>
+                    <input type="text" id="room-code-input" class="room-input" placeholder="Enter Code" maxlength="6"
+                        autocomplete="off" autocorrect="off">
+                </div>
+                <div class="home-actions">
+                    <button id="join-game-btn" class="btn btn-green btn-lg btn-block">
+                        <span class="btn-content">JOIN</span>
+                    </button>
+                    <button id="back-auth-btn" class="btn btn-white btn-md btn-block">
+                        <span class="btn-content">BACK</span>
+                    </button>
+                </div>
             </div>
 
-            <p class="status-line" id="status-line">Select options in the menu to begin.</p>
-        </section>
+            <!-- Lobby Panel -->
+            <div class="card card-accent hidden" id="lobby-panel">
+                <div class="form-group">
+                    <label>ROOM CODE</label>
+                    <div class="room-code-display" id="room-code-display">
+                        <span id="room-code-text" class="mono-num">----</span>
+                        <button id="copy-code-btn" class="icon-btn" title="Copy Room Code">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>PLAYERS</label>
+                    <ul id="lobby-player-list" class="player-list"></ul>
+                </div>
+                <div class="home-actions">
+                    <button id="start-game-btn" class="btn btn-green btn-lg btn-block hidden">
+                        <span class="btn-content">START LAUNCH</span>
+                    </button>
+                    <div id="waiting-host-msg" class="label-muted hidden" style="text-align: center;">
+                        WAITING FOR HOST...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ GAME SCREEN ═══ -->
+        <div id="game-screen" class="screen game-screen">
+            <header class="top-bar">
+                <button id="menu-btn" class="btn btn-white btn-sm">
+                    <span class="btn-content">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 12H5" />
+                            <path d="M12 19l-7-7 7-7" />
+                        </svg>
+                    </span>
+                </button>
+                <div class="room-id" id="game-room-id">ROOM</div>
+            </header>
+
+            <div class="score-bar" id="score-bar"></div>
+
+            <div class="arena-wrapper">
+                <canvas id="chain-canvas"></canvas>
+            </div>
+
+            <div class="status-bar">
+                <div class="turn-indicator" id="turn-indicator-bar">
+                    <span id="turn-player-name">PLAYER 1</span>'S TURN
+                </div>
+            </div>
+        </div>
     </main>
 
-    <script src="renderer.js"></script>
+    <!-- ═══ WINNER MODAL ═══ -->
+    <div class="modal-overlay hidden" id="winner-modal">
+        <div class="modal-panel">
+            <div class="modal-handle"></div>
+            <h2 id="winner-modal-title">VICTORY!</h2>
+            <p id="winner-modal-text">Board Secured.</p>
+            <div class="modal-actions">
+                <button id="modal-rematch-btn" class="btn btn-green btn-lg btn-block">
+                    <span class="btn-content">REMATCH</span>
+                </button>
+                <button id="modal-exit-btn" class="btn btn-white btn-md btn-block">
+                    <span class="btn-content">EXIT</span>
+                </button>
+            </div>
+            <div id="modal-waiting-msg" class="label-muted hidden" style="text-align: center; margin-top: 12px;">
+                Waiting for others...
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
     <script src="game.js"></script>
 </body>
+
 </html>
