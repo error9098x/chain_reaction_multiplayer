@@ -2,8 +2,8 @@ const socket = io();
 
 const canvas = document.getElementById('chain-canvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
-const logicalWidth = 960;
-const logicalHeight = 640;
+const logicalWidth = 480;
+const logicalHeight = 720;
 let pixelRatio = 1;
 
 if (canvas) {
@@ -19,8 +19,8 @@ function configureCanvasResolution() {
     ctx.imageSmoothingEnabled = true;
 }
 
-const COLS = 10;
-const ROWS = 8;
+const COLS = 6;
+const ROWS = 9;
 const cellPadding = 2;
 const explosionDurationMs = 180;
 const cellWidth = Math.floor(logicalWidth / COLS);
@@ -92,6 +92,14 @@ const modalWaitingMsg = document.getElementById('modal-waiting-msg');
 
 // Toast container reference
 const toastContainer = document.getElementById('toast-container');
+
+// ─── Color helpers ───
+function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 // ═══════════════════════════════════════════════════════════
 // GAME STATE
@@ -633,23 +641,22 @@ function updateHudStats() {
             const c = counts[p.color] || 0;
             const isEliminated = (turnCount >= enabledPlayers.length && c === 0) || p.offline;
             const isMyTurn = (enabledPlayers[currentPlayerIndex].id === p.id);
-            const playerColor = themeColors[p.color] || '#999';
-            const playerLight = themeColorsLight[p.color] || 'rgba(0,0,0,0.05)';
+            const playerColor = themeColors[p.color] || '#fff';
 
             const chip = document.createElement('div');
             chip.className = 'player-chip' + (isMyTurn ? ' active' : '');
-            chip.style.background = playerLight;
+            // Dark theme chip colors
+            chip.style.background = isMyTurn ? hexToRgba(playerColor, 0.18) : 'rgba(255,255,255,0.05)';
             chip.style.borderColor = isMyTurn ? playerColor : 'transparent';
-            chip.style.color = isMyTurn ? (themeColorsDepth[p.color] || '#333') : '#4a5568';
-            chip.style.opacity = isEliminated ? '0.35' : '1';
+            chip.style.opacity = isEliminated ? '0.3' : '1';
             if (isMyTurn) {
-                chip.style.boxShadow = `0 2px 12px ${playerColor}33`;
+                chip.style.boxShadow = `0 2px 14px ${hexToRgba(playerColor, 0.35)}`;
             }
 
             const displayName = p.name.substring(0, 8);
             const statusIcon = p.offline ? ' ⚡' : '';
             chip.innerHTML = `
-                <span class="player-dot" style="background:${playerColor}"></span>
+                <span class="player-dot" style="background:${playerColor}; box-shadow: 0 0 6px ${hexToRgba(playerColor, 0.6)}"></span>
                 <span>${displayName}${statusIcon}: ${c}</span>
             `;
             scoreBar.appendChild(chip);
@@ -657,22 +664,18 @@ function updateHudStats() {
     }
 
     if (winner) {
-        const wc = themeColors[winner.color] || '#999';
-        const wcLight = themeColorsLight[winner.color] || 'rgba(0,0,0,0.05)';
-        const wcDepth = themeColorsDepth[winner.color] || '#333';
-        turnIndicatorBar.innerHTML = `<span id="turn-player-name">${winner.name}</span> WINS!`;
-        turnIndicatorBar.style.background = wcLight;
-        turnIndicatorBar.style.color = wcDepth;
+        const wc = themeColors[winner.color] || '#fff';
+        turnIndicatorBar.innerHTML = `<span id="turn-player-name">${winner.name}</span> WINS! 🎉`;
+        turnIndicatorBar.style.background = hexToRgba(wc, 0.15);
+        turnIndicatorBar.style.color = wc;
         turnIndicatorBar.style.borderTopColor = wc;
     } else {
         const cp = enabledPlayers[currentPlayerIndex];
         const isMe = cp.id === myPlayerId;
-        const cpColor = themeColors[cp.color] || '#999';
-        const cpLight = themeColorsLight[cp.color] || 'rgba(0,0,0,0.05)';
-        const cpDepth = themeColorsDepth[cp.color] || '#333';
+        const cpColor = themeColors[cp.color] || '#fff';
         turnIndicatorBar.innerHTML = `<span id="turn-player-name">${isMe ? 'YOUR' : cp.name + "'S"}</span> TURN`;
-        turnIndicatorBar.style.background = cpLight;
-        turnIndicatorBar.style.color = cpDepth;
+        turnIndicatorBar.style.background = hexToRgba(cpColor, 0.1);
+        turnIndicatorBar.style.color = cpColor;
         turnIndicatorBar.style.borderTopColor = cpColor;
     }
 }
@@ -684,10 +687,18 @@ function updateHudStats() {
 function renderGrid() {
     ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-    // Draw grid lines — subtle on light background
-    ctx.strokeStyle = 'rgba(58, 70, 96, 0.08)';
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 1;
+    // Grid lines colored to current player's turn
+    const cp = enabledPlayers[currentPlayerIndex];
+    if (gameActive && cp && !winner) {
+        const turnColor = themeColors[cp.color] || '#4a5568';
+        ctx.strokeStyle = turnColor;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.4;
+    } else {
+        ctx.strokeStyle = 'rgba(58, 70, 96, 0.25)';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 1;
+    }
 
     for (let c = 0; c <= COLS; c++) {
         const x = c * cellWidth; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, logicalHeight); ctx.stroke();
@@ -695,6 +706,7 @@ function renderGrid() {
     for (let r = 0; r <= ROWS; r++) {
         const y = r * cellHeight; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(logicalWidth, y); ctx.stroke();
     }
+    ctx.globalAlpha = 1;
 
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
@@ -703,8 +715,8 @@ function renderGrid() {
 
             const cx = c * cellWidth + cellWidth / 2;
             const cy = r * cellHeight + cellHeight / 2;
-            const radius = Math.min(cellWidth, cellHeight) * 0.15;
-            const sp = radius * 1.2;
+            const radius = Math.min(cellWidth, cellHeight) * 0.22;
+            const sp = radius * 1.3;
 
             let jx = 0, jy = 0;
             if (cell.count + 1 >= criticalMass(r, c)) {
@@ -751,7 +763,7 @@ function renderGrid() {
 }
 
 function renderProjectiles(now) {
-    const radius = Math.min(cellWidth, cellHeight) * 0.15;
+    const radius = Math.min(cellWidth, cellHeight) * 0.22;
     for (const p of projectiles) {
         const prog = Math.min(1, (now - p.start) / p.dur);
         const x = p.sx + (p.ex - p.sx) * prog;
