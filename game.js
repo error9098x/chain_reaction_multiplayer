@@ -805,7 +805,7 @@ function render(now) {
 // ═══════════════════════════════════════════════════════════
 
 canvas.addEventListener('click', (e) => {
-    if (!gameActive || winner || projectiles.length > 0) return;
+    if (!gameActive || winner || projectiles.length > 0 || pendingServerEvents.length > 0) return;
     initAudio();
 
     const rect = canvas.getBoundingClientRect();
@@ -815,7 +815,10 @@ canvas.addEventListener('click', (e) => {
     const row = Math.floor((e.clientY - rect.top) * sy / cellHeight);
 
     if (!inBounds(row, col)) return;
-    const cp = enabledPlayers[currentPlayerIndex];
+    // Use the most up-to-date turn information from the server
+    const effectiveTurnIndex = (targetTurnIndex !== undefined && targetTurnIndex !== null)
+        ? targetTurnIndex : currentPlayerIndex;
+    const cp = enabledPlayers[effectiveTurnIndex];
 
     if (cp.id !== myPlayerId) {
         // Not your turn — show subtle feedback
