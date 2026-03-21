@@ -360,13 +360,16 @@ startGameBtn.addEventListener('click', () => {
     socket.emit('startMatch', roomCode);
 });
 
-socket.on('matchStarted', ({ players, turnIndex: serverTurnIndex, solo }) => {
+socket.on('matchStarted', ({ players, turnIndex: serverTurnIndex, solo, code }) => {
     enabledPlayers = players;
     turnIndex = serverTurnIndex;
     grid = createGrid();
     pendingBatch = null;
     projectiles = [];
     eliminatedPlayers = new Set();
+    
+    // Set roomCode from event (covers solo mode where it wasn't set before)
+    if (code) roomCode = code;
     
     // Sub-task 11.1: Set isSoloMode based on room.solo flag
     if (solo) {
@@ -418,7 +421,7 @@ socket.on('matchEnded', ({ winnerId, winnerName, winnerColor, reason }) => {
     winner = enabledPlayers.find(p => p.id === winnerId) || { name: winnerName, color: winnerColor };
 
     gameActive = false;
-    pendingBatch = null; // Clear pending animations when game ends to allow render loop termination
+    // DO NOT clear pendingBatch here - let animations complete naturally
     hasVotedRematch = false;
     playWinTune();
     statsDirty = true;
@@ -595,6 +598,12 @@ function returnToMenu() {
     gameScreen.classList.remove('active');
     mainMenu.classList.add('active');
     winnerModal.classList.add('hidden');
+    
+    // Hide all panels except auth panel
+    soloLobbyPanel.classList.add('hidden');
+    lobbyPanel.classList.add('hidden');
+    joinPanel.classList.add('hidden');
+    authPanel.classList.remove('hidden');
 }
 
 // Sub-task 11.3: Create returnToSoloLobby function

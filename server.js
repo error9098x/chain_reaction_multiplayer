@@ -190,6 +190,14 @@ function executeAIMove(roomCode) {
     } catch (error) {
         // Sub-task 13.2: Handle AI calculation errors gracefully
         console.error(`AI error in room ${roomCode}:`, error);
+        console.error('Error stack:', error.stack);
+        console.error('Room state:', JSON.stringify({
+            code: room.code,
+            difficulty: room.difficulty,
+            turnIndex: room.turnIndex,
+            playersCount: room.players.length,
+            aiPlayer: room.players.find(p => p.isAI)
+        }));
         
         // End game with human player as winner
         room.state = 'finished';
@@ -212,6 +220,12 @@ function executeAIMove(roomCode) {
  */
 function calculateAIMove(room) {
     const aiPlayer = room.players.find(p => p.isAI);
+    
+    if (!aiPlayer) {
+        console.error(`No AI player found in room ${room.code}`);
+        return null;
+    }
+    
     const validMoves = getValidMoves(room.grid, aiPlayer.color);
 
     if (validMoves.length === 0) {
@@ -472,6 +486,110 @@ function deepCloneGrid(grid) {
     return grid.map(row => row.map(cell => ({ ...cell })));
 }
 
+// ═══════════════════════════════════════════════════════════
+// GAME LOGIC HELPERS (used by both AI and socket handlers)
+// ═══════════════════════════════════════════════════════════
+
+function getAtomCounts(room) {
+    const counts = {};
+    room.players.forEach(p => counts[p.color] = 0);
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = room.grid[r][c];
+            if (cell.count > 0 && counts[cell.color] !== undefined) {
+                counts[cell.color] += cell.count;
+            }
+        }
+    }
+    return counts;
+}
+
+function findNextPlayerIndex(room, counts) {
+    let nextIndex = room.turnIndex;
+    for (let step = 0; step < room.players.length; step++) {
+        nextIndex = (nextIndex + 1) % room.players.length;
+        const player = room.players[nextIndex];
+        if (player.offline) continue;
+        if (room.turnCount < room.players.length || counts[player.color] > 0) {
+            return nextIndex;
+        }
+    }
+    return room.turnIndex;
+}
+
+function processTurn(room, row, col, playerColor) {
+    const events = [];
+
+    // 1. Initial placement
+    room.grid[row][col].color = playerColor;
+    room.grid[row][col].count += 1;
+    events.push({ type: 'place', row, col, color: playerColor });
+
+    // 2. Resolve explosions
+    let safety = 0;
+    while (safety < 1000) {
+        safety++;
+
+        // Find all cells that need to explode in this wave
+        const explodingCells = [];
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (room.grid[r][c].count >= criticalMass(r, c)) {
+                    explodingCells.push({ r, c, color: room.grid[r][c].color });
+                }
+            }
+        }
+
+        if (explodingCells.length === 0) break; // Chain reaction finished
+
+        const waveEvent = { type: 'explodeWave', explosions: [] };
+        const flyingAtoms = [];
+
+        // Clear exploding cells and generate flying atoms
+        for (const { r, c, color } of explodingCells) {
+            room.grid[r][c].count = 0;
+            room.grid[r][c].color = null;
+            waveEvent.explosions.push({ row: r, col: c, color });
+
+            const neighbors = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+            for (const [nr, nc] of neighbors) {
+                if (inBounds(nr, nc)) {
+                    flyingAtoms.push({ r: nr, c: nc, color });
+                }
+            }
+        }
+        events.push(waveEvent);
+
+        // Land flying atoms
+        for (const { r, c, color } of flyingAtoms) {
+            room.grid[r][c].color = color;
+            room.grid[r][c].count += 1;
+        }
+    }
+
+    // Turn completely finalized
+    room.turnCount++;
+
+    const counts = getAtomCounts(room);
+    if (room.turnCount >= room.players.length) {
+        const survivors = room.players.filter(p => !p.offline && counts[p.color] > 0);
+        if (survivors.length === 1) {
+            room.state = 'finished';
+            room.winnerId = survivors[0].id;
+        } else if (survivors.length === 0) {
+            // Draw
+            room.state = 'finished';
+            room.winnerId = 'draw';
+        }
+    }
+
+    if (room.state !== 'finished') {
+        room.turnIndex = findNextPlayerIndex(room, counts);
+    }
+
+    return events;
+}
+
 io.on('connection', (socket) => {
 
     // ─── CREATE SOLO MATCH ───
@@ -531,7 +649,8 @@ io.on('connection', (socket) => {
         io.to(code).emit('matchStarted', {
             players: rooms[code].players,
             turnIndex: 0,
-            solo: rooms[code].solo || false
+            solo: rooms[code].solo || false,
+            code
         });
 
         // If AI goes first (players[0].isAI), trigger AI move
@@ -688,110 +807,10 @@ io.on('connection', (socket) => {
         io.to(code).emit('matchStarted', {
             players: room.players,
             turnIndex: room.turnIndex,
-            solo: room.solo || false
+            solo: room.solo || false,
+            code
         });
     });
-
-    // ─── GAME LOGIC HELPERS ───
-    function getAtomCounts(room) {
-        const counts = {};
-        room.players.forEach(p => counts[p.color] = 0);
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
-                const cell = room.grid[r][c];
-                if (cell.count > 0 && counts[cell.color] !== undefined) {
-                    counts[cell.color] += cell.count;
-                }
-            }
-        }
-        return counts;
-    }
-
-    function findNextPlayerIndex(room, counts) {
-        let nextIndex = room.turnIndex;
-        for (let step = 0; step < room.players.length; step++) {
-            nextIndex = (nextIndex + 1) % room.players.length;
-            const player = room.players[nextIndex];
-            if (player.offline) continue;
-            if (room.turnCount < room.players.length || counts[player.color] > 0) {
-                return nextIndex;
-            }
-        }
-        return room.turnIndex;
-    }
-
-    function processTurn(room, row, col, playerColor) {
-        const events = [];
-
-        // 1. Initial placement
-        room.grid[row][col].color = playerColor;
-        room.grid[row][col].count += 1;
-        events.push({ type: 'place', row, col, color: playerColor });
-
-        // 2. Resolve explosions
-        let safety = 0;
-        while (safety < 1000) {
-            safety++;
-
-            // Find all cells that need to explode in this wave
-            const explodingCells = [];
-            for (let r = 0; r < ROWS; r++) {
-                for (let c = 0; c < COLS; c++) {
-                    if (room.grid[r][c].count >= criticalMass(r, c)) {
-                        explodingCells.push({ r, c, color: room.grid[r][c].color });
-                    }
-                }
-            }
-
-            if (explodingCells.length === 0) break; // Chain reaction finished
-
-            const waveEvent = { type: 'explodeWave', explosions: [] };
-            const flyingAtoms = [];
-
-            // Clear exploding cells and generate flying atoms
-            for (const { r, c, color } of explodingCells) {
-                room.grid[r][c].count = 0;
-                room.grid[r][c].color = null;
-                waveEvent.explosions.push({ row: r, col: c, color });
-
-                const neighbors = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
-                for (const [nr, nc] of neighbors) {
-                    if (inBounds(nr, nc)) {
-                        flyingAtoms.push({ r: nr, c: nc, color });
-                    }
-                }
-            }
-            events.push(waveEvent);
-
-            // Land flying atoms
-            for (const { r, c, color } of flyingAtoms) {
-                room.grid[r][c].color = color;
-                room.grid[r][c].count += 1;
-            }
-        }
-
-        // Turn completely finalized
-        room.turnCount++;
-
-        const counts = getAtomCounts(room);
-        if (room.turnCount >= room.players.length) {
-            const survivors = room.players.filter(p => !p.offline && counts[p.color] > 0);
-            if (survivors.length === 1) {
-                room.state = 'finished';
-                room.winnerId = survivors[0].id;
-            } else if (survivors.length === 0) {
-                // Draw
-                room.state = 'finished';
-                room.winnerId = 'draw';
-            }
-        }
-
-        if (room.state !== 'finished') {
-            room.turnIndex = findNextPlayerIndex(room, counts);
-        }
-
-        return events;
-    }
 
     // ─── PLACE ATOM ───
     socket.on('placeAtom', ({ code, row, col }) => {
