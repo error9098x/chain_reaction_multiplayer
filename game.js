@@ -73,10 +73,19 @@ const gameRoomId = document.getElementById('game-room-id');
 
 const showHostBtn = document.getElementById('show-host-btn');
 const showJoinBtn = document.getElementById('show-join-btn');
+const showSoloBtn = document.getElementById('show-solo-btn');
 const joinGameBtn = document.getElementById('join-game-btn');
 const backAuthBtn = document.getElementById('back-auth-btn');
 const startGameBtn = document.getElementById('start-game-btn');
 const waitingHostMsg = document.getElementById('waiting-host-msg');
+
+// Solo mode UI elements
+const soloLobbyPanel = document.getElementById('solo-lobby-panel');
+const soloPlayerName = document.getElementById('solo-player-name');
+const soloPlayerColorDot = document.getElementById('solo-player-color-dot');
+const startSoloGameBtn = document.getElementById('start-solo-game-btn');
+const backFromSoloBtn = document.getElementById('back-from-solo-btn');
+const difficultyBtns = document.querySelectorAll('.difficulty-btn');
 
 const scoreBar = document.getElementById('score-bar');
 const turnIndicatorBar = document.getElementById('turn-indicator-bar');
@@ -110,6 +119,10 @@ let enabledPlayers = [];
 let turnIndex = 0;  // Single source of truth for turn tracking (replaces currentPlayerIndex + targetTurnIndex)
 let myPlayerId = null;
 let amHost = false;
+
+// Solo mode state
+let isSoloMode = false;
+let selectedDifficulty = 'easy'; // Default difficulty
 
 let grid = createGrid();
 let projectiles = [];
@@ -216,6 +229,57 @@ joinGameBtn.addEventListener('click', () => {
     socket.emit('joinMatch', { code, name, color });
 });
 
+// ═══════════════════════════════════════════════════════════
+// SOLO MODE NAVIGATION
+// ═══════════════════════════════════════════════════════════
+
+// ─── SHOW SOLO LOBBY ───
+showSoloBtn.addEventListener('click', () => {
+    const name = validateName();
+    if (!name) return;
+    const color = playerColorSelect.value;
+    
+    // Display player info in solo lobby
+    soloPlayerName.textContent = name;
+    soloPlayerColorDot.style.background = themeColors[color] || '#999';
+    
+    // Hide auth panel, show solo lobby
+    authPanel.classList.add('hidden');
+    soloLobbyPanel.classList.remove('hidden');
+});
+
+// ─── DIFFICULTY SELECTION ───
+difficultyBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        // Remove active class from all buttons
+        difficultyBtns.forEach(b => b.classList.remove('active'));
+        // Add active class to clicked button
+        btn.classList.add('active');
+        // Update selected difficulty
+        selectedDifficulty = btn.dataset.difficulty;
+    });
+});
+
+// ─── START SOLO GAME ───
+startSoloGameBtn.addEventListener('click', () => {
+    const name = playerNameInput.value.trim();
+    if (!name) {
+        showToast('Please enter a player name.');
+        return;
+    }
+    const color = playerColorSelect.value;
+    
+    // Emit createSoloMatch event to server
+    socket.emit('createSoloMatch', { name, color, difficulty: selectedDifficulty });
+    // Note: isSoloMode will be set when matchStarted event is received
+});
+
+// ─── BACK FROM SOLO LOBBY ───
+backFromSoloBtn.addEventListener('click', () => {
+    soloLobbyPanel.classList.add('hidden');
+    authPanel.classList.remove('hidden');
+});
+
 // ─── COPY CODE ───
 copyCodeBtn.addEventListener('click', () => {
     if (roomCode) {
@@ -296,13 +360,19 @@ startGameBtn.addEventListener('click', () => {
     socket.emit('startMatch', roomCode);
 });
 
-socket.on('matchStarted', ({ players, turnIndex: serverTurnIndex }) => {
+socket.on('matchStarted', ({ players, turnIndex: serverTurnIndex, solo }) => {
     enabledPlayers = players;
     turnIndex = serverTurnIndex;
     grid = createGrid();
     pendingBatch = null;
     projectiles = [];
     eliminatedPlayers = new Set();
+    
+    // Sub-task 11.1: Set isSoloMode based on room.solo flag
+    if (solo) {
+        isSoloMode = true;
+    }
+    
     startMatchUI();
 });
 
@@ -391,7 +461,8 @@ function checkAndShowVictoryModal() {
     // Reset modal buttons
     if (modalRematchBtn) {
         modalRematchBtn.classList.remove('hidden');
-        modalRematchBtn.querySelector('.btn-content').textContent = 'REMATCH';
+        // Sub-task 11.2: Change button text to "PLAY AGAIN" for solo mode
+        modalRematchBtn.querySelector('.btn-content').textContent = isSoloMode ? 'PLAY AGAIN' : 'REMATCH';
         modalRematchBtn.disabled = false;
     }
     if (modalExitBtn) modalExitBtn.classList.remove('hidden');
@@ -404,6 +475,13 @@ function checkAndShowVictoryModal() {
 
 if (modalRematchBtn) {
     modalRematchBtn.addEventListener('click', () => {
+        // Sub-task 11.2: Handle solo mode "PLAY AGAIN" differently
+        if (isSoloMode) {
+            returnToSoloLobby();
+            return;
+        }
+        
+        // Existing multiplayer rematch logic
         if (hasVotedRematch) return;
         hasVotedRematch = true;
         socket.emit('rematchVote', roomCode);
@@ -460,6 +538,20 @@ socket.on('playerDisconnected', ({ name, color, playerId }) => {
     statsDirty = true;
 });
 
+// Sub-task 13.3: Handle connection loss during solo game
+socket.on('disconnect', () => {
+    // Check if we're in an active solo game
+    if (gameActive && isSoloMode) {
+        showToast('Connection lost. Returning to menu...', 4000);
+        
+        // Return to menu after 4 second delay
+        setTimeout(() => {
+            returnToMenu();
+            authPanel.classList.remove('hidden');
+        }, 4000);
+    }
+});
+
 // ═══════════════════════════════════════════════════════════
 // GAME CORE LOGIC
 // ═══════════════════════════════════════════════════════════
@@ -496,10 +588,52 @@ function returnToMenu() {
     eliminatedPlayers = new Set();
     statsDirty = true;
     hasVotedRematch = false;
+    
+    // Sub-task 11.1: Reset isSoloMode when returning to menu
+    isSoloMode = false;
 
     gameScreen.classList.remove('active');
     mainMenu.classList.add('active');
     winnerModal.classList.add('hidden');
+}
+
+// Sub-task 11.3: Create returnToSoloLobby function
+function returnToSoloLobby() {
+    // Hide winner modal and game screen
+    winnerModal.classList.add('hidden');
+    gameScreen.classList.remove('active');
+    
+    // Show main menu and solo lobby panel
+    mainMenu.classList.add('active');
+    authPanel.classList.add('hidden');
+    soloLobbyPanel.classList.remove('hidden');
+    
+    // Restore selectedDifficulty (already preserved in variable)
+    // Update UI to show the selected difficulty
+    difficultyBtns.forEach(btn => {
+        if (btn.dataset.difficulty === selectedDifficulty) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    
+    // Display player name and color in solo lobby
+    const name = playerNameInput.value.trim();
+    const color = playerColorSelect.value;
+    soloPlayerName.textContent = name;
+    soloPlayerColorDot.style.background = themeColors[color] || '#999';
+    
+    // Focus start game button for accessibility
+    startSoloGameBtn.focus();
+    
+    // Reset game state
+    gameActive = false;
+    winner = null;
+    projectiles = [];
+    eliminatedPlayers = new Set();
+    statsDirty = true;
+    hasVotedRematch = false;
 }
 
 menuBtn.addEventListener('click', () => {
@@ -868,6 +1002,12 @@ canvas.addEventListener('click', (e) => {
     
     // Single source of truth — safe to read turnIndex here because pendingBatch is null
     const cp = enabledPlayers[turnIndex];
+
+    // Sub-task 12.1: Check if current player is AI before processing click
+    if (cp.isAI) {
+        showToast("It's AI's turn");
+        return;
+    }
 
     if (cp.id !== myPlayerId) {
         // Not your turn — show subtle feedback

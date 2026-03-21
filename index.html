@@ -102,6 +102,9 @@
                     <button id="show-join-btn" class="btn btn-purple btn-lg btn-block btn-outline">
                         <span class="btn-content">JOIN MATCH</span>
                     </button>
+                    <button id="show-solo-btn" class="btn btn-green btn-lg btn-block">
+                        <span class="btn-content">SOLO MODE</span>
+                    </button>
                 </div>
             </div>
 
@@ -148,6 +151,35 @@
                     <div id="waiting-host-msg" class="label-muted hidden" style="text-align: center;">
                         WAITING FOR HOST...
                     </div>
+                </div>
+            </div>
+
+            <!-- Solo Lobby Panel -->
+            <div class="card card-accent hidden" id="solo-lobby-panel">
+                <div class="form-group">
+                    <label>PLAYER</label>
+                    <div class="player-display">
+                        <span id="solo-player-name" class="player-display-name">Player Name</span>
+                        <span id="solo-player-color-dot" class="dot"></span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>DIFFICULTY</label>
+                    <div class="difficulty-selector">
+                        <button class="difficulty-btn active" data-difficulty="easy">EASY</button>
+                        <button class="difficulty-btn" data-difficulty="medium">MEDIUM</button>
+                        <button class="difficulty-btn" data-difficulty="hard">HARD</button>
+                    </div>
+                </div>
+                
+                <div class="home-actions">
+                    <button id="start-solo-game-btn" class="btn btn-green btn-lg btn-block">
+                        <span class="btn-content">START GAME</span>
+                    </button>
+                    <button id="back-from-solo-btn" class="btn btn-white btn-md btn-block">
+                        <span class="btn-content">BACK</span>
+                    </button>
                 </div>
             </div>
         </div>

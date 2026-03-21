@@ -87,7 +87,458 @@ function findRoomBySocket(socketId) {
     return null;
 }
 
+// ═══════════════════════════════════════════════════════════
+// AI ENGINE FOR SOLO MODE
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Get all valid moves for a player
+ * @param {Array} grid - The game grid
+ * @param {string} color - The player's color
+ * @returns {Array} - Array of {row, col} coordinates
+ */
+function getValidMoves(grid, color) {
+    const moves = [];
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = grid[r][c];
+            // Valid if empty or owned by this player
+            if (cell.count === 0 || cell.color === color) {
+                moves.push({ row: r, col: c });
+            }
+        }
+    }
+    return moves;
+}
+
+/**
+ * Schedule an AI move with appropriate delay
+ * @param {string} roomCode - The room code
+ */
+function scheduleAIMove(roomCode) {
+    const room = rooms[roomCode];
+    if (!room || room.state !== 'playing') return;
+
+    const currentPlayer = room.players[room.turnIndex];
+    if (!currentPlayer || !currentPlayer.isAI) return;
+
+    // Calculate delay based on difficulty
+    const delays = {
+        easy: { min: 800, max: 1200 },
+        medium: { min: 600, max: 1000 },
+        hard: { min: 400, max: 800 }
+    };
+
+    const delay = delays[room.difficulty];
+    const waitTime = delay.min + Math.random() * (delay.max - delay.min);
+
+    setTimeout(() => {
+        executeAIMove(roomCode);
+    }, waitTime);
+}
+
+/**
+ * Execute the AI move
+ * @param {string} roomCode - The room code
+ */
+function executeAIMove(roomCode) {
+    const room = rooms[roomCode];
+    if (!room || room.state !== 'playing') return;
+
+    const currentPlayer = room.players[room.turnIndex];
+    if (!currentPlayer || !currentPlayer.isAI) return;
+
+    // Sub-task 13.2: Wrap AI move calculation in try-catch
+    try {
+        const move = calculateAIMove(room);
+        if (!move) {
+            // No valid moves - end game
+            room.state = 'finished';
+            const humanPlayer = room.players.find(p => !p.isAI);
+            room.winnerId = humanPlayer.id;
+            io.to(roomCode).emit('matchEnded', {
+                winnerId: humanPlayer.id,
+                winnerName: humanPlayer.name,
+                winnerColor: humanPlayer.color,
+                reason: 'AI has no valid moves.'
+            });
+            return;
+        }
+
+        // Execute the move using existing game logic
+        const events = processTurn(room, move.row, move.col, currentPlayer.color);
+
+        io.to(roomCode).emit('gameStateUpdate', {
+            events,
+            grid: room.grid,
+            turnIndex: room.turnIndex,
+            turnCount: room.turnCount,
+            winnerId: room.winnerId
+        });
+
+        if (room.state === 'finished') {
+            const winnerPlayer = room.players.find(p => p.id === room.winnerId);
+            io.to(roomCode).emit('matchEnded', {
+                winnerId: room.winnerId,
+                winnerName: winnerPlayer ? winnerPlayer.name : 'Unknown',
+                winnerColor: winnerPlayer ? winnerPlayer.color : 'blue'
+            });
+        } else if (room.players[room.turnIndex].isAI) {
+            // AI has another turn (rare but possible)
+            scheduleAIMove(roomCode);
+        }
+    } catch (error) {
+        // Sub-task 13.2: Handle AI calculation errors gracefully
+        console.error(`AI error in room ${roomCode}:`, error);
+        
+        // End game with human player as winner
+        room.state = 'finished';
+        const humanPlayer = room.players.find(p => !p.isAI);
+        room.winnerId = humanPlayer.id;
+        
+        io.to(roomCode).emit('matchEnded', {
+            winnerId: humanPlayer.id,
+            winnerName: humanPlayer.name,
+            winnerColor: humanPlayer.color,
+            reason: 'AI encountered an error.'
+        });
+    }
+}
+
+/**
+ * Calculate the best move for the AI opponent
+ * @param {Object} room - The game room state
+ * @returns {Object} - {row, col} coordinates of the selected move
+ */
+function calculateAIMove(room) {
+    const aiPlayer = room.players.find(p => p.isAI);
+    const validMoves = getValidMoves(room.grid, aiPlayer.color);
+
+    if (validMoves.length === 0) {
+        console.error(`No valid moves for AI in room ${room.code}`);
+        return null;
+    }
+
+    switch (room.difficulty) {
+        case 'easy':
+            return calculateEasyMove(validMoves);
+        case 'medium':
+            return calculateMediumMove(room, validMoves, aiPlayer.color);
+        case 'hard':
+            return calculateHardMove(room, validMoves, aiPlayer.color);
+        default:
+            return calculateEasyMove(validMoves);
+    }
+}
+
+/**
+ * Easy AI: Random move selection
+ * @param {Array} validMoves - Array of {row, col} valid moves
+ * @returns {Object} - {row, col} selected move
+ */
+function calculateEasyMove(validMoves) {
+    const randomIndex = Math.floor(Math.random() * validMoves.length);
+    return validMoves[randomIndex];
+}
+
+/**
+ * Medium AI: Tactical scoring
+ * @param {Object} room - The game room state
+ * @param {Array} validMoves - Array of {row, col} valid moves
+ * @param {string} aiColor - The AI's color
+ * @returns {Object} - {row, col} selected move
+ */
+function calculateMediumMove(room, validMoves, aiColor) {
+    const scores = validMoves.map(move => {
+        let score = 0;
+        const cell = room.grid[move.row][move.col];
+
+        // 1. Prioritize critical cells owned by AI (about to explode)
+        if (cell.color === aiColor && cell.count + 1 >= criticalMass(move.row, move.col)) {
+            score += 100;
+        }
+
+        // 2. Reward moves adjacent to opponent cells (potential captures)
+        const neighbors = [
+            [move.row - 1, move.col],
+            [move.row + 1, move.col],
+            [move.row, move.col - 1],
+            [move.row, move.col + 1]
+        ];
+
+        let adjacentOpponentCount = 0;
+        for (const [nr, nc] of neighbors) {
+            if (inBounds(nr, nc)) {
+                const neighborCell = room.grid[nr][nc];
+                if (neighborCell.count > 0 && neighborCell.color !== aiColor) {
+                    adjacentOpponentCount++;
+                }
+            }
+        }
+        score += adjacentOpponentCount * 30;
+
+        // 3. Prefer building up existing cells over empty cells
+        if (cell.count > 0 && cell.color === aiColor) {
+            score += 20;
+        }
+
+        // 4. Slight preference for center cells (more strategic)
+        const centerDistance = Math.abs(move.row - ROWS / 2) + Math.abs(move.col - COLS / 2);
+        score += (10 - centerDistance);
+
+        return { move, score };
+    });
+
+    // Find maximum score
+    const maxScore = Math.max(...scores.map(s => s.score));
+    const bestMoves = scores.filter(s => s.score === maxScore);
+
+    // Random selection among tied best moves
+    const selected = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+    return selected.move;
+}
+
+/**
+ * Hard AI: Strategic with chain prediction
+ * @param {Object} room - The game room state
+ * @param {Array} validMoves - Array of {row, col} valid moves
+ * @param {string} aiColor - The AI's color
+ * @returns {Object} - {row, col} selected move
+ */
+function calculateHardMove(room, validMoves, aiColor) {
+    const scores = validMoves.map(move => {
+        let score = 0;
+
+        // 1. Simulate the move to calculate chain potential
+        const simulatedGrid = deepCloneGrid(room.grid);
+        const chainResult = simulateMove(simulatedGrid, move.row, move.col, aiColor);
+
+        // Offensive scoring: reward moves that capture many opponent cells
+        if (chainResult.capturedCells >= 3) {
+            score += 200;
+        } else if (chainResult.capturedCells > 0) {
+            score += chainResult.capturedCells * 50;
+        }
+
+        // 2. Defensive scoring: block opponent critical cells
+        const opponentThreats = findOpponentThreats(room.grid, aiColor);
+        for (const threat of opponentThreats) {
+            const distance = Math.abs(move.row - threat.row) + Math.abs(move.col - threat.col);
+            if (distance === 1) {
+                score += 80;
+            }
+        }
+
+        // 3. Build up critical cells
+        const cell = room.grid[move.row][move.col];
+        if (cell.color === aiColor && cell.count + 1 >= criticalMass(move.row, move.col)) {
+            score += 60;
+        }
+
+        // 4. Control key positions
+        const isCorner = (move.row === 0 || move.row === ROWS - 1) &&
+                        (move.col === 0 || move.col === COLS - 1);
+        const isEdge = move.row === 0 || move.row === ROWS - 1 ||
+                      move.col === 0 || move.col === COLS - 1;
+
+        if (isCorner) score += 15;
+        else if (isEdge) score += 10;
+        else score += 5;
+
+        // 5. Penalize moves that leave opponent with easy captures
+        const vulnerabilityPenalty = calculateVulnerability(chainResult.finalGrid, aiColor);
+        score -= vulnerabilityPenalty * 10;
+
+        return { move, score };
+    });
+
+    // Find maximum score
+    const maxScore = Math.max(...scores.map(s => s.score));
+    const bestMoves = scores.filter(s => s.score === maxScore);
+
+    // Random selection among tied best moves
+    const selected = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+    return selected.move;
+}
+
+/**
+ * Simulate a move and calculate chain reaction results
+ * @param {Array} grid - Cloned grid to simulate on
+ * @param {number} row - Move row
+ * @param {number} col - Move column
+ * @param {string} color - Player color
+ * @returns {Object} - {capturedCells: number, finalGrid: Array}
+ */
+function simulateMove(grid, row, col, color) {
+    let capturedCells = 0;
+
+    // Place initial atom
+    grid[row][col].color = color;
+    grid[row][col].count += 1;
+
+    // Simulate explosions
+    let safety = 0;
+    while (safety < 100) {
+        safety++;
+
+        const explodingCells = [];
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (grid[r][c].count >= criticalMass(r, c)) {
+                    explodingCells.push({ r, c, color: grid[r][c].color });
+                }
+            }
+        }
+
+        if (explodingCells.length === 0) break;
+
+        // Process explosions
+        for (const { r, c, color: expColor } of explodingCells) {
+            grid[r][c].count = 0;
+            grid[r][c].color = null;
+
+            const neighbors = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+            for (const [nr, nc] of neighbors) {
+                if (inBounds(nr, nc)) {
+                    // Count captures (color conversions)
+                    if (grid[nr][nc].count > 0 && grid[nr][nc].color !== expColor) {
+                        capturedCells++;
+                    }
+                    grid[nr][nc].color = expColor;
+                    grid[nr][nc].count += 1;
+                }
+            }
+        }
+    }
+
+    return { capturedCells, finalGrid: grid };
+}
+
+/**
+ * Find opponent cells that are one move away from critical mass
+ * @param {Array} grid - The game grid
+ * @param {string} aiColor - The AI's color
+ * @returns {Array} - Array of {row, col} threat positions
+ */
+function findOpponentThreats(grid, aiColor) {
+    const threats = [];
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = grid[r][c];
+            if (cell.count > 0 && cell.color !== aiColor) {
+                if (cell.count + 1 >= criticalMass(r, c)) {
+                    threats.push({ row: r, col: c });
+                }
+            }
+        }
+    }
+    return threats;
+}
+
+/**
+ * Calculate vulnerability score (how many AI cells are at risk)
+ * @param {Array} grid - The game grid
+ * @param {string} aiColor - The AI's color
+ * @returns {number} - Vulnerability score
+ */
+function calculateVulnerability(grid, aiColor) {
+    let vulnerability = 0;
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = grid[r][c];
+            if (cell.count > 0 && cell.color === aiColor) {
+                const neighbors = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+                for (const [nr, nc] of neighbors) {
+                    if (inBounds(nr, nc)) {
+                        const neighbor = grid[nr][nc];
+                        if (neighbor.count > 0 && neighbor.color !== aiColor &&
+                            neighbor.count + 1 >= criticalMass(nr, nc)) {
+                            vulnerability++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return vulnerability;
+}
+
+/**
+ * Deep clone the grid for simulation
+ * @param {Array} grid - The game grid
+ * @returns {Array} - Cloned grid
+ */
+function deepCloneGrid(grid) {
+    return grid.map(row => row.map(cell => ({ ...cell })));
+}
+
 io.on('connection', (socket) => {
+
+    // ─── CREATE SOLO MATCH ───
+    socket.on('createSoloMatch', ({ name, color, difficulty }) => {
+        // Sub-task 13.1: Validate inputs
+        const trimmedName = (name || '').trim();
+        if (!trimmedName || trimmedName.length < 1) {
+            socket.emit('errorMsg', 'Please enter a player name.');
+            return;
+        }
+        if (trimmedName.length > 12) {
+            socket.emit('errorMsg', 'Name must be 12 characters or less.');
+            return;
+        }
+
+        if (!VALID_COLORS.includes(color)) {
+            socket.emit('errorMsg', 'Invalid color selection.');
+            return;
+        }
+
+        if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+            socket.emit('errorMsg', 'Invalid difficulty level.');
+            return;
+        }
+
+        // Generate unique room code with "SOLO-" prefix
+        let code = 'SOLO-' + generateRoomCode();
+        while (rooms[code]) {
+            code = 'SOLO-' + generateRoomCode();
+        }
+
+        // Sub-task 3.2: Assign AI color (prefer blue, fallback to red if player chose blue)
+        const aiColor = color === 'blue' ? 'red' : 'blue';
+
+        // Create solo room with AI opponent
+        const difficultyLabel = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+        rooms[code] = {
+            code,
+            host: socket.id,
+            players: [
+                { id: socket.id, name: trimmedName, color, offline: false },
+                { id: 'AI', name: `AI (${difficultyLabel})`, color: aiColor, offline: false, isAI: true }
+            ],
+            state: 'playing', // Start immediately (no lobby wait)
+            solo: true,
+            difficulty,
+            turnIndex: 0,
+            turnCount: 0,
+            grid: createGrid(),
+            rematchVotes: new Set(),
+            winnerId: null,
+        };
+
+        socket.join(code);
+
+        // Sub-task 3.3: Emit matchStarted event
+        io.to(code).emit('matchStarted', {
+            players: rooms[code].players,
+            turnIndex: 0,
+            solo: rooms[code].solo || false
+        });
+
+        // If AI goes first (players[0].isAI), trigger AI move
+        if (rooms[code].players[0].isAI) {
+            scheduleAIMove(code);
+        }
+    });
 
     // ─── HOST MATCH ───
     socket.on('hostMatch', ({ name, color }) => {
@@ -161,6 +612,13 @@ io.on('connection', (socket) => {
             socket.emit('errorMsg', 'Room not found.');
             return;
         }
+
+        // Prevent joining solo rooms
+        if (room.solo) {
+            socket.emit('errorMsg', 'Cannot join solo practice games.');
+            return;
+        }
+
         if (room.state !== 'lobby') {
             socket.emit('errorMsg', 'Match already in progress.');
             return;
@@ -229,7 +687,8 @@ io.on('connection', (socket) => {
 
         io.to(code).emit('matchStarted', {
             players: room.players,
-            turnIndex: room.turnIndex
+            turnIndex: room.turnIndex,
+            solo: room.solo || false
         });
     });
 
@@ -380,6 +839,9 @@ io.on('connection', (socket) => {
                 winnerName: winnerPlayer ? winnerPlayer.name : (room.winnerId === 'draw' ? 'Nobody' : 'Unknown'),
                 winnerColor: winnerPlayer ? winnerPlayer.color : 'blue'
             });
+        } else if (room.solo && room.players[room.turnIndex].isAI) {
+            // Trigger AI move if it's AI's turn in solo mode
+            scheduleAIMove(code);
         }
     });
 
@@ -486,6 +948,12 @@ io.on('connection', (socket) => {
             if (pIndex === -1) continue;
 
             const disconnectedPlayer = room.players[pIndex];
+
+            // Immediately delete solo rooms on disconnect
+            if (room.solo) {
+                delete rooms[code];
+                break;
+            }
 
             if (room.state === 'lobby') {
                 // Remove player from lobby
