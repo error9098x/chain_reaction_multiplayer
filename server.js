@@ -345,8 +345,13 @@ io.on('connection', (socket) => {
         // Validate it's this player's turn
         const currentPlayer = room.players[room.turnIndex];
         if (!currentPlayer || currentPlayer.id !== socket.id) {
-            // Not your turn — send feedback so client can self-correct
-            socket.emit('gameStateUpdate', { turnIndex: room.turnIndex, grid: room.grid });
+            // Not your turn — send sync correction with empty events
+            socket.emit('gameStateUpdate', { 
+                events: [],
+                turnIndex: room.turnIndex, 
+                grid: room.grid,
+                turnCount: room.turnCount
+            });
             return;
         }
 
@@ -507,6 +512,18 @@ io.on('connection', (socket) => {
                     color: disconnectedPlayer.color,
                     playerId: disconnectedPlayer.id,
                 });
+
+                // If disconnected player was current turn holder, advance turn
+                if (room.players[room.turnIndex].id === disconnectedPlayer.id) {
+                    const counts = getAtomCounts(room);
+                    room.turnIndex = findNextPlayerIndex(room, counts);
+                    io.to(code).emit('gameStateUpdate', {
+                        events: [],
+                        grid: room.grid,
+                        turnIndex: room.turnIndex,
+                        turnCount: room.turnCount
+                    });
+                }
 
                 // Check if only 1 active player remains → auto-win
                 const activePlayers = room.players.filter(p => !p.offline);

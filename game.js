@@ -107,22 +107,25 @@ function hexToRgba(hex, alpha) {
 
 let roomCode = null;
 let enabledPlayers = [];
-let currentPlayerIndex = 0;
+let turnIndex = 0;  // Single source of truth for turn tracking (replaces currentPlayerIndex + targetTurnIndex)
 let myPlayerId = null;
 let amHost = false;
 
 let grid = createGrid();
 let projectiles = [];
 let animationFrame = 0;
-let pendingServerEvents = [];
-let targetGrid = null;
-let targetTurnIndex = 0;
+let pendingBatch = null;  // Queues server events with their associated turnIndex: { events, grid, turnIndex, turnCount }
 let turnCount = 0;
 let winner = null;
 let gameActive = false;
 let audioContext;
 let statsDirty = true;
 let isRendering = false;
+let waitingForServer = false;  // Debounce flag to prevent rapid double-clicks
+
+// Visual feedback for disconnected players
+let eliminatedPlayers = new Set();
+let hasVotedRematch = false;
 
 function createGrid() {
     return Array.from({ length: ROWS }, () =>
@@ -290,35 +293,41 @@ startGameBtn.addEventListener('click', () => {
     socket.emit('startMatch', roomCode);
 });
 
-socket.on('matchStarted', ({ players, turnIndex }) => {
+socket.on('matchStarted', ({ players, turnIndex: serverTurnIndex }) => {
     enabledPlayers = players;
-    currentPlayerIndex = turnIndex;
-    targetTurnIndex = turnIndex;
+    turnIndex = serverTurnIndex;
     grid = createGrid();
-    targetGrid = null;
-    pendingServerEvents = [];
+    pendingBatch = null;
     projectiles = [];
+    eliminatedPlayers = new Set();
     startMatchUI();
 });
 
 // ─── GAME STATE UPDATE (Server-Authoritative) ───
-socket.on('gameStateUpdate', ({ events, grid: serverGrid, turnIndex, turnCount: serverTurnCount }) => {
+socket.on('gameStateUpdate', ({ events, grid: serverGrid, turnIndex: serverTurnIndex, turnCount: serverTurnCount }) => {
     if (!gameActive) return;
 
+    // Clear debounce flag on any server response
+    waitingForServer = false;
+
     if (!events || events.length === 0) {
-        // Just a sync correction (e.g. invalid move or out of turn)
+        // Authoritative correction — apply immediately, no animation
+        // This handles out-of-turn moves and other sync corrections
         grid = serverGrid;
-        currentPlayerIndex = turnIndex;
+        turnIndex = serverTurnIndex;
         if (serverTurnCount !== undefined) turnCount = serverTurnCount;
         statsDirty = true;
         if (!isRendering) { isRendering = true; requestAnimationFrame(render); }
         return;
     }
 
-    pendingServerEvents = pendingServerEvents.concat(events);
-    targetGrid = serverGrid;
-    targetTurnIndex = turnIndex;
-    if (serverTurnCount !== undefined) turnCount = serverTurnCount;
+    // Queue as a batch — turnIndex applied only after animation completes
+    pendingBatch = { 
+        events: [...events], 
+        grid: serverGrid, 
+        turnIndex: serverTurnIndex, 
+        turnCount: serverTurnCount 
+    };
 
     if (!isRendering) {
         isRendering = true;
@@ -570,18 +579,22 @@ function processServerEvents(now) {
     // Wait for flying projectiles to land before processing the next explosion wave
     if (projectiles.length > 0) return;
 
-    if (pendingServerEvents.length === 0) {
-        // All events processed, perfectly sync local grid to server's target grid
-        if (targetGrid) {
-            grid = targetGrid;
-            targetGrid = null;
-            currentPlayerIndex = targetTurnIndex;
-            statsDirty = true;
+    if (pendingBatch === null) return;
+
+    if (pendingBatch.events.length === 0) {
+        // All events in this batch are done — commit state atomically
+        grid = pendingBatch.grid;
+        turnIndex = pendingBatch.turnIndex;  // SINGLE WRITE — fixes the bug
+        if (pendingBatch.turnCount !== undefined) {
+            turnCount = pendingBatch.turnCount;
         }
+        pendingBatch = null;
+        statsDirty = true;
         return;
     }
 
-    const event = pendingServerEvents.shift();
+    // Process next event in the batch
+    const event = pendingBatch.events.shift();
 
     if (event.type === 'place') {
         playAtomSound();
@@ -625,8 +638,8 @@ function updateHudStats() {
         scoreBar.innerHTML = '';
         enabledPlayers.forEach(p => {
             const c = counts[p.color] || 0;
-            const isEliminated = (turnCount >= enabledPlayers.length && c === 0) || p.offline;
-            const isMyTurn = (enabledPlayers[currentPlayerIndex]?.id === p.id);
+            const isEliminated = (turnCount >= enabledPlayers.length && c === 0) || p.offline || eliminatedPlayers.has(p.id);
+            const isMyTurn = (enabledPlayers[turnIndex]?.id === p.id);
             const playerColor = themeColors[p.color] || '#fff';
 
             const chip = document.createElement('div');
@@ -656,7 +669,7 @@ function updateHudStats() {
         turnIndicatorBar.style.color = wc;
         turnIndicatorBar.style.borderTopColor = wc;
     } else {
-        const cp = enabledPlayers[currentPlayerIndex];
+        const cp = enabledPlayers[turnIndex];
         const isMe = cp.id === myPlayerId;
         const cpColor = themeColors[cp.color] || '#fff';
         turnIndicatorBar.innerHTML = `<span id="turn-player-name">${isMe ? 'YOUR' : cp.name + "'S"}</span> TURN`;
@@ -674,7 +687,7 @@ function renderGrid() {
     ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
     // Grid lines colored to current player's turn
-    const cp = enabledPlayers[currentPlayerIndex];
+    const cp = enabledPlayers[turnIndex];
     if (gameActive && cp && !winner) {
         const turnColor = themeColors[cp.color] || '#4a5568';
         ctx.strokeStyle = turnColor;
@@ -776,7 +789,7 @@ function renderProjectiles(now) {
 }
 
 function render(now) {
-    if (!gameActive && projectiles.length === 0 && pendingServerEvents.length === 0) {
+    if (!gameActive && projectiles.length === 0 && pendingBatch === null) {
         isRendering = false;
         return;
     }
@@ -793,7 +806,7 @@ function render(now) {
     }
 
     animationFrame++;
-    if (gameActive || projectiles.length > 0 || pendingServerEvents.length > 0) {
+    if (gameActive || projectiles.length > 0 || pendingBatch !== null) {
         requestAnimationFrame(render);
     } else {
         isRendering = false;
@@ -805,7 +818,14 @@ function render(now) {
 // ═══════════════════════════════════════════════════════════
 
 canvas.addEventListener('click', (e) => {
-    if (!gameActive || winner || projectiles.length > 0 || pendingServerEvents.length > 0) return;
+    if (!gameActive || winner) return;
+    
+    // CRITICAL: Check animation state BEFORE reading turnIndex
+    if (projectiles.length > 0 || pendingBatch !== null) return;
+    
+    // CRITICAL: Check debounce flag to prevent rapid double-clicks
+    if (waitingForServer) return;
+    
     initAudio();
 
     const rect = canvas.getBoundingClientRect();
@@ -815,10 +835,9 @@ canvas.addEventListener('click', (e) => {
     const row = Math.floor((e.clientY - rect.top) * sy / cellHeight);
 
     if (!inBounds(row, col)) return;
-    // Use the most up-to-date turn information from the server
-    const effectiveTurnIndex = (targetTurnIndex !== undefined && targetTurnIndex !== null)
-        ? targetTurnIndex : currentPlayerIndex;
-    const cp = enabledPlayers[effectiveTurnIndex];
+    
+    // Single source of truth — safe to read turnIndex here because pendingBatch is null
+    const cp = enabledPlayers[turnIndex];
 
     if (cp.id !== myPlayerId) {
         // Not your turn — show subtle feedback
@@ -826,8 +845,9 @@ canvas.addEventListener('click', (e) => {
         return;
     }
 
-    const cell = targetGrid ? targetGrid[row][col] : grid[row][col];
+    const cell = grid[row][col];
     if (cell.count === 0 || cell.color === cp.color) {
+        waitingForServer = true;  // Set debounce flag
         socket.emit('placeAtom', { code: roomCode, row, col });
     } else {
         showToast("You can only place on empty cells or your own.");
