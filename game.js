@@ -135,6 +135,7 @@ let audioContext;
 let statsDirty = true;
 let isRendering = false;
 let waitingForServer = false;  // Debounce flag to prevent rapid double-clicks
+let waitingForServerTimeout = null;  // Timeout to reset the flag if server doesn't respond
 
 // Visual feedback for disconnected players
 let eliminatedPlayers = new Set();
@@ -385,6 +386,10 @@ socket.on('gameStateUpdate', ({ events, grid: serverGrid, turnIndex: serverTurnI
 
     // Clear debounce flag on any server response
     waitingForServer = false;
+    if (waitingForServerTimeout) {
+        clearTimeout(waitingForServerTimeout);
+        waitingForServerTimeout = null;
+    }
 
     if (!events || events.length === 0) {
         // Authoritative correction — apply immediately, no animation
@@ -1009,8 +1014,16 @@ canvas.addEventListener('click', (e) => {
 
     if (!inBounds(row, col)) return;
     
-    // Single source of truth — safe to read turnIndex here because pendingBatch is null
-    const cp = enabledPlayers[turnIndex];
+    // CRITICAL FIX: Use the most up-to-date turn index
+    // If pendingBatch exists, use its turnIndex (the server's authoritative state)
+    // Otherwise use the current turnIndex
+    const currentTurnIndex = pendingBatch ? pendingBatch.turnIndex : turnIndex;
+    const cp = enabledPlayers[currentTurnIndex];
+    
+    if (!cp) {
+        console.error('No current player found at turnIndex:', currentTurnIndex);
+        return;
+    }
 
     // Sub-task 12.1: Check if current player is AI before processing click
     if (cp.isAI) {
@@ -1027,6 +1040,16 @@ canvas.addEventListener('click', (e) => {
     const cell = grid[row][col];
     if (cell.count === 0 || cell.color === cp.color) {
         waitingForServer = true;  // Set debounce flag
+        
+        // Set timeout to reset flag if server doesn't respond within 5 seconds
+        // This prevents permanent deadlock due to packet loss or extreme latency
+        waitingForServerTimeout = setTimeout(() => {
+            console.warn('Server response timeout - resetting waitingForServer flag');
+            waitingForServer = false;
+            waitingForServerTimeout = null;
+            showToast('Connection issue - please try again');
+        }, 5000);
+        
         socket.emit('placeAtom', { code: roomCode, row, col });
     } else {
         showToast("You can only place on empty cells or your own.");
