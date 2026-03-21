@@ -7,7 +7,9 @@
     "start": "node server.js",
     "dev": "node server.js",
     "desktop": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "test": "vitest --run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "browser-game",
@@ -18,7 +20,11 @@
   "author": "Aviral",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^28.0.0"
+    "@vitest/ui": "^4.1.0",
+    "electron": "^28.0.0",
+    "fast-check": "^4.6.0",
+    "jsdom": "^29.0.1",
+    "vitest": "^4.1.0"
   },
   "dependencies": {
     "cors": "^2.8.6",

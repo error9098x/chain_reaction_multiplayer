@@ -127,6 +127,9 @@ let waitingForServer = false;  // Debounce flag to prevent rapid double-clicks
 let eliminatedPlayers = new Set();
 let hasVotedRematch = false;
 
+// Victory modal timing - store modal data for deferred display
+let pendingVictoryModal = null;
+
 function createGrid() {
     return Array.from({ length: ROWS }, () =>
         Array.from({ length: COLS }, () => ({ count: 0, color: null }))
@@ -345,10 +348,37 @@ socket.on('matchEnded', ({ winnerId, winnerName, winnerColor, reason }) => {
     winner = enabledPlayers.find(p => p.id === winnerId) || { name: winnerName, color: winnerColor };
 
     gameActive = false;
+    pendingBatch = null; // Clear pending animations when game ends to allow render loop termination
     hasVotedRematch = false;
     playWinTune();
     statsDirty = true;
 
+    // Store modal data for deferred display after animations complete
+    pendingVictoryModal = {
+        winnerId,
+        winnerName,
+        winnerColor,
+        reason,
+        isWinner
+    };
+
+    // Start checking if we can show modal
+    checkAndShowVictoryModal();
+});
+
+function checkAndShowVictoryModal() {
+    if (!pendingVictoryModal) return;
+    
+    // Wait for animations to complete
+    if (projectiles.length > 0 || pendingBatch !== null) {
+        requestAnimationFrame(checkAndShowVictoryModal);
+        return;
+    }
+    
+    // Animations complete - show modal
+    const { winnerId, winnerName, winnerColor, reason, isWinner } = pendingVictoryModal;
+    pendingVictoryModal = null;
+    
     winnerModalTitle.textContent = isWinner ? 'VICTORY!' : 'GAME OVER';
     winnerModalText.textContent = isWinner
         ? 'You dominated the board!'
@@ -368,7 +398,7 @@ socket.on('matchEnded', ({ winnerId, winnerName, winnerColor, reason }) => {
     if (modalWaitingMsg) modalWaitingMsg.classList.add('hidden');
 
     winnerModal.classList.remove('hidden');
-});
+}
 
 // ─── REMATCH FLOW ───
 
@@ -399,11 +429,11 @@ if (modalExitBtn) {
     });
 }
 
-socket.on('rematchVoteUpdate', ({ votedCount, totalNeeded, voterName }) => {
+socket.on('rematchVoteUpdate', ({ votedCount, totalNeeded, voterName, voterId }) => {
     if (modalWaitingMsg && !modalWaitingMsg.classList.contains('hidden')) {
         modalWaitingMsg.textContent = `Waiting for players... (${votedCount}/${totalNeeded})`;
     }
-    if (voterName && votedCount < totalNeeded) {
+    if (voterName && votedCount < totalNeeded && voterId !== myPlayerId) {
         showToast(`${voterName} wants a rematch!`);
     }
 });

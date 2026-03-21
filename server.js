@@ -407,6 +407,7 @@ io.on('connection', (socket) => {
             votedCount: currentVotes,
             totalNeeded: totalVotesNeeded,
             voterName: player.name,
+            voterId: socket.id,
         });
 
         // If all active players voted, restart
